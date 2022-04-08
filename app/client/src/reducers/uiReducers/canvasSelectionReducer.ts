@@ -7,6 +7,7 @@ const initialState: CanvasSelectionState = {
   isDraggingForSelection: false,
   widgetId: "",
   outOfCanvasStartPositions: undefined,
+  newWidgets: {},
 };
 
 export const canvasSelectionReducer = createImmerReducer(initialState, {
@@ -37,12 +38,29 @@ export const canvasSelectionReducer = createImmerReducer(initialState, {
     state.widgetId = "";
     state.outOfCanvasStartPositions = undefined;
   },
+  ADD_NEW_WIDGET: (
+    state: CanvasSelectionState,
+    action: ReduxAction<string[]>,
+  ) => {
+    if (Array.isArray(action.payload)) {
+      action.payload.forEach((id) => {
+        state.newWidgets[id] = id;
+      });
+    }
+  },
+  REMOVE_NEW_WIDGET: (
+    state: CanvasSelectionState,
+    action: ReduxAction<string>,
+  ) => {
+    delete state.newWidgets[action.payload];
+  },
 });
 
 export type CanvasSelectionState = {
   isDraggingForSelection: boolean;
   widgetId?: string;
   outOfCanvasStartPositions?: XYCord;
+  newWidgets: Record<string, string>;
 };
 
 export default canvasSelectionReducer;
