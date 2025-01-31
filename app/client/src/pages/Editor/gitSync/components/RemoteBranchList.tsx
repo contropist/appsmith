@@ -1,7 +1,7 @@
-import SegmentHeader from "components/ads/ListSegmentHeader";
 import { RemoteBranchListItem } from "./RemoteBranchListItem";
 import React from "react";
-import { createMessage, REMOTE_BRANCHES } from "@appsmith/constants/messages";
+import { createMessage, REMOTE_BRANCHES } from "ee/constants/messages";
+import { Text } from "@appsmith/ads";
 
 /**
  * RemoteBranchList: returns a list of remote branches
@@ -15,12 +15,18 @@ export function RemoteBranchList(
   return (
     <div data-testid="t--git-remote-branch-list-container">
       {remoteBranches?.length > 0 && (
-        <SegmentHeader hideStyledHr title={createMessage(REMOTE_BRANCHES)} />
+        <Text
+          color="var(--ads-v2-color-fg-muted)"
+          data-testid="t--branch-list-header-local"
+          kind="heading-s"
+          style={{ fontWeight: 600 }}
+        >
+          {createMessage(REMOTE_BRANCHES)}
+        </Text>
       )}
       {remoteBranches.map((branch: string) => (
         <RemoteBranchListItem
           branch={branch}
-          className="t--branch-item"
           key={branch}
           onClick={() => switchBranch(branch)}
         />

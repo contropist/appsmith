@@ -1,224 +1,339 @@
 package com.appsmith.server.repositories.ce;
 
-import com.appsmith.external.models.BaseDomain;
 import com.appsmith.server.acl.AclPermission;
 import com.appsmith.server.domains.Application;
 import com.appsmith.server.domains.ApplicationPage;
-import com.appsmith.server.domains.GitAuth;
-import com.appsmith.server.domains.QApplication;
+import com.appsmith.server.domains.User;
+import com.appsmith.server.helpers.ce.bridge.Bridge;
+import com.appsmith.server.helpers.ce.bridge.BridgeQuery;
+import com.appsmith.server.helpers.ce.bridge.BridgeUpdate;
+import com.appsmith.server.projections.IdOnly;
 import com.appsmith.server.repositories.BaseAppsmithRepositoryImpl;
-import com.mongodb.BasicDBObject;
-import com.mongodb.DBObject;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.result.UpdateResult;
-import lombok.NonNull;
+import com.appsmith.server.repositories.CacheableRepositoryHelper;
+import com.appsmith.server.solutions.ApplicationPermission;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.mongodb.core.ReactiveMongoOperations;
-import org.springframework.data.mongodb.core.convert.MongoConverter;
-import org.springframework.data.mongodb.core.query.BasicQuery;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.io.File;
-import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
-import static org.springframework.data.mongodb.core.query.Criteria.where;
-
 @Slf4j
+@RequiredArgsConstructor
 public class CustomApplicationRepositoryCEImpl extends BaseAppsmithRepositoryImpl<Application>
         implements CustomApplicationRepositoryCE {
 
-    @Autowired
-    public CustomApplicationRepositoryCEImpl(@NonNull ReactiveMongoOperations mongoOperations,
-                                             @NonNull MongoConverter mongoConverter) {
-        super(mongoOperations, mongoConverter);
-    }
+    private final CacheableRepositoryHelper cacheableRepositoryHelper;
+    private final ApplicationPermission applicationPermission;
 
     @Override
-    protected Criteria getIdCriteria(Object id) {
-        return where(fieldName(QApplication.application.id)).is(id);
-    }
-
-    @Override
-    public Mono<Application> findByIdAndOrganizationId(String id, String orgId, AclPermission permission) {
-        Criteria orgIdCriteria = where(fieldName(QApplication.application.organizationId)).is(orgId);
-        Criteria idCriteria = getIdCriteria(id);
-
-        return queryOne(List.of(idCriteria, orgIdCriteria), permission);
+    public Mono<Application> findByIdAndWorkspaceId(String id, String workspaceId, AclPermission permission) {
+        return queryBuilder()
+                .byId(id)
+                .criteria(Bridge.equal(Application.Fields.workspaceId, workspaceId))
+                .permission(permission)
+                .one();
     }
 
     @Override
     public Mono<Application> findByName(String name, AclPermission permission) {
-        Criteria nameCriteria = where(fieldName(QApplication.application.name)).is(name);
-        return queryOne(List.of(nameCriteria), permission);
+        return queryBuilder()
+                .criteria(Bridge.equal(Application.Fields.name, name))
+                .permission(permission)
+                .one();
     }
 
     @Override
-    public Flux<Application> findByOrganizationId(String orgId, AclPermission permission) {
-        Criteria orgIdCriteria = where(fieldName(QApplication.application.organizationId)).is(orgId);
-        return queryAll(List.of(orgIdCriteria), permission);
+    public Flux<Application> findByWorkspaceId(String workspaceId, AclPermission permission) {
+        return queryBuilder()
+                .criteria(Bridge.equal(Application.Fields.workspaceId, workspaceId))
+                .permission(permission)
+                .all();
     }
 
     @Override
-    public Flux<Application> findByMultipleOrganizationIds(Set<String> orgIds, AclPermission permission) {
-        Criteria orgIdsCriteria = where(fieldName(QApplication.application.organizationId)).in(orgIds);
-        return queryAll(List.of(orgIdsCriteria), permission);
+    public Flux<Application> findByMultipleWorkspaceIds(Set<String> workspaceIds, AclPermission permission) {
+        return queryBuilder()
+                .criteria(Bridge.in(Application.Fields.workspaceId, workspaceIds))
+                .permission(permission)
+                .all();
+    }
+
+    @Override
+    public Flux<Application> findAllUserApps(AclPermission permission) {
+        return ReactiveSecurityContextHolder.getContext()
+                .map(ctx -> (User) ctx.getAuthentication().getPrincipal())
+                .flatMap(cacheableRepositoryHelper::getPermissionGroupsOfUser)
+                .flatMapMany(permissionGroups -> queryBuilder()
+                        .permission(permission)
+                        .permissionGroups(permissionGroups)
+                        .all());
     }
 
     @Override
     public Flux<Application> findByClonedFromApplicationId(String applicationId, AclPermission permission) {
-        Criteria clonedFromCriteria = where(fieldName(QApplication.application.clonedFromApplicationId)).is(applicationId);
-        return queryAll(List.of(clonedFromCriteria), permission);
+        return queryBuilder()
+                .criteria(Bridge.equal(Application.Fields.clonedFromApplicationId, applicationId))
+                .permission(permission)
+                .all();
     }
 
     @Override
-    public Mono<UpdateResult> addPageToApplication(String applicationId, String pageId, boolean isDefault, String defaultPageId) {
+    public Mono<Integer> addPageToApplication(
+            String applicationId, String pageId, boolean isDefault, String basePageId) {
         final ApplicationPage applicationPage = new ApplicationPage();
         applicationPage.setIsDefault(isDefault);
-        applicationPage.setDefaultPageId(defaultPageId);
+        applicationPage.setDefaultPageId(basePageId);
         applicationPage.setId(pageId);
-        return mongoOperations.updateFirst(
-                Query.query(getIdCriteria(applicationId)),
-                new Update().push(fieldName(QApplication.application.pages), applicationPage),
-                Application.class
-        );
+        return queryBuilder()
+                .byId(applicationId)
+                .updateFirst(Bridge.update().push(Application.Fields.pages, applicationPage));
     }
 
     @Override
-    public Mono<UpdateResult> setPages(String applicationId, List<ApplicationPage> pages) {
-        return mongoOperations.updateFirst(
-                Query.query(getIdCriteria(applicationId)),
-                new Update().set(fieldName(QApplication.application.pages), pages),
-                Application.class
-        );
+    public Mono<Integer> setPages(String applicationId, List<ApplicationPage> pages) {
+        return queryBuilder().byId(applicationId).updateFirst(Bridge.update().set(Application.Fields.pages, pages));
     }
 
     @Override
-    public Mono<UpdateResult> setDefaultPage(String applicationId, String pageId) {
+    public Mono<Void> setDefaultPage(String applicationId, String pageId) {
         // Since this can only happen during edit, the page in question is unpublished page. Hence the update should
         // be to pages and not publishedPages
 
-        final Mono<UpdateResult> setAllAsNonDefaultMono = mongoOperations.updateFirst(
-                Query.query(getIdCriteria(applicationId)).addCriteria(Criteria.where("pages.isDefault").is(true)),
-                new Update().set("pages.$.isDefault", false),
-                Application.class
-        );
+        final Mono<Integer> setAllAsNonDefaultMono = queryBuilder()
+                .byId(applicationId)
+                .criteria(Bridge.isTrue("pages.isDefault"))
+                .updateFirst(Bridge.update().set("pages.$.isDefault", false));
 
-        final Mono<UpdateResult> setDefaultMono = mongoOperations.updateFirst(
-                Query.query(getIdCriteria(applicationId)).addCriteria(Criteria.where("pages._id").is(new ObjectId(pageId))),
-                new Update().set("pages.$.isDefault", true),
-                Application.class
-        );
+        final Mono<Integer> setDefaultMono = queryBuilder()
+                .byId(applicationId)
+                .criteria(Bridge.equal("pages._id", new ObjectId(pageId)))
+                .updateFirst(Bridge.update().set("pages.$.isDefault", true));
 
-        return setAllAsNonDefaultMono.then(setDefaultMono);
+        return setAllAsNonDefaultMono.then(setDefaultMono).then();
     }
 
     @Override
-    public Mono<UpdateResult> setGitAuth(String applicationId, GitAuth gitAuth, AclPermission aclPermission) {
-        Update updateObj = new Update();
-        gitAuth.setGeneratedAt(Instant.now());
-        String path = String.format("%s.%s", fieldName(QApplication.application.gitApplicationMetadata),
-                fieldName(QApplication.application.gitApplicationMetadata.gitAuth)
-        );
-
-        updateObj.set(path, gitAuth);
-        return this.updateById(applicationId, updateObj, aclPermission);
+    @Deprecated
+    public Mono<Application> getApplicationByGitBranchAndBaseApplicationId(
+            String baseApplicationId, String branchName, AclPermission aclPermission) {
+        return getApplicationByGitBranchAndBaseApplicationId(baseApplicationId, null, branchName, aclPermission);
     }
 
     @Override
-    public Mono<Application> getApplicationByGitBranchAndDefaultApplicationId(String defaultApplicationId, String branchName, AclPermission aclPermission) {
+    public Mono<Application> getApplicationByGitBranchAndBaseApplicationId(
+            String baseApplicationId,
+            List<String> projectionFieldNames,
+            String branchName,
+            AclPermission aclPermission) {
 
-        String gitApplicationMetadata = fieldName(QApplication.application.gitApplicationMetadata);
-
-        Criteria defaultAppCriteria = where(gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.defaultApplicationId)).is(defaultApplicationId);
-        Criteria branchNameCriteria = where(gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.branchName)).is(branchName);
-        return queryOne(List.of(defaultAppCriteria, branchNameCriteria), aclPermission);
+        return queryBuilder()
+                .criteria(Bridge.or(
+                                Bridge.equal(
+                                        Application.Fields.gitApplicationMetadata_defaultApplicationId,
+                                        baseApplicationId),
+                                Bridge.equal(
+                                        Application.Fields.gitApplicationMetadata_defaultArtifactId, baseApplicationId))
+                        .equal(Application.Fields.gitApplicationMetadata_branchName, branchName))
+                .fields(projectionFieldNames)
+                .permission(aclPermission)
+                .one();
     }
 
     @Override
-    public Flux<Application> getApplicationByGitDefaultApplicationId(String defaultApplicationId, AclPermission permission) {
-        String gitApplicationMetadata = fieldName(QApplication.application.gitApplicationMetadata);
+    public Mono<Application> getApplicationByGitBranchAndBaseApplicationId(
+            String baseApplicationId, String branchName, Optional<AclPermission> aclPermission) {
 
-        Criteria applicationIdCriteria = where(gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.defaultApplicationId)).is(defaultApplicationId);
-        Criteria deletionCriteria = where(fieldName(QApplication.application.deleted)).ne(true);
-        return queryAll(List.of(applicationIdCriteria, deletionCriteria), permission);
+        return queryBuilder()
+                .criteria(
+                        Bridge.equal(Application.Fields.gitApplicationMetadata_defaultApplicationId, baseApplicationId)
+                                .equal(Application.Fields.gitApplicationMetadata_branchName, branchName))
+                .permission(aclPermission.orElse(null))
+                .one();
+    }
+
+    @Override
+    public Flux<Application> getApplicationByGitBaseApplicationId(String baseApplicationId, AclPermission permission) {
+
+        return queryBuilder()
+                .criteria(
+                        Bridge.equal(Application.Fields.gitApplicationMetadata_defaultApplicationId, baseApplicationId))
+                .permission(permission)
+                .all();
+    }
+
+    @Override
+    public Mono<Long> getGitConnectedApplicationWithPrivateRepoCount(String workspaceId) {
+        return queryBuilder()
+                .criteria(Bridge.equal(Application.Fields.workspaceId, workspaceId)
+                        .isTrue(Application.Fields.gitApplicationMetadata_isRepoPrivate))
+                .count();
+    }
+
+    @Override
+    public Flux<Application> getGitConnectedApplicationByWorkspaceId(String workspaceId) {
+        AclPermission aclPermission = applicationPermission.getEditPermission();
+        return queryBuilder()
+                .criteria(Bridge
+                        // isRepoPrivate and gitAuth will be stored only with default application which ensures we will
+                        // have only single application per repo
+                        .exists(Application.Fields.gitApplicationMetadata_isRepoPrivate)
+                        .exists(Application.Fields.gitApplicationMetadata_gitAuth)
+                        .equal(Application.Fields.workspaceId, workspaceId))
+                .permission(aclPermission)
+                .all();
+    }
+
+    @Override
+    public Mono<Application> getApplicationByBaseApplicationIdAndDefaultBranch(String baseApplicationId) {
+
+        return queryBuilder()
+                .criteria(
+                        Bridge.equal(Application.Fields.gitApplicationMetadata_defaultApplicationId, baseApplicationId))
+                .one();
+    }
+
+    @Override
+    public Mono<Integer> setAppTheme(
+            String applicationId, String editModeThemeId, String publishedModeThemeId, AclPermission aclPermission) {
+        BridgeUpdate updateObj = Bridge.update();
+        if (StringUtils.hasLength(editModeThemeId)) {
+            updateObj = updateObj.set(Application.Fields.editModeThemeId, editModeThemeId);
+        }
+        if (StringUtils.hasLength(publishedModeThemeId)) {
+            updateObj = updateObj.set(Application.Fields.publishedModeThemeId, publishedModeThemeId);
+        }
+
+        return queryBuilder().byId(applicationId).permission(aclPermission).updateFirst(updateObj);
+    }
+
+    @Override
+    public Mono<Long> countByNameAndWorkspaceId(String applicationName, String workspaceId, AclPermission permission) {
+        return queryBuilder()
+                .criteria(Bridge.equal(Application.Fields.workspaceId, workspaceId)
+                        .equal(Application.Fields.name, applicationName))
+                .permission(permission)
+                .count();
+    }
+
+    @Override
+    public Flux<String> getAllApplicationIdsInWorkspaceAccessibleToARoleWithPermission(
+            String workspaceId, AclPermission permission, String permissionGroupId) {
+        return queryBuilder()
+                .criteria(Bridge.equal(Application.Fields.workspaceId, workspaceId))
+                // Check if the permission is being provided by the given permission group
+                .permission(permission)
+                .permissionGroups(Set.of(permissionGroupId))
+                .all(IdOnly.class)
+                .map(IdOnly::id);
+    }
+
+    @Override
+    public Mono<Long> getAllApplicationsCountAccessibleToARoleWithPermission(
+            AclPermission permission, String permissionGroupId) {
+        return queryBuilder()
+                .permission(permission)
+                .permissionGroups(Set.of(permissionGroupId))
+                .count();
+    }
+
+    @Override
+    public Mono<Integer> unprotectAllBranches(String applicationId, AclPermission permission) {
+        String isProtectedFieldPath = Application.Fields.gitApplicationMetadata_isProtectedBranch;
+
+        BridgeUpdate unsetProtected = Bridge.update().set(isProtectedFieldPath, false);
+
+        return queryBuilder()
+                .criteria(Bridge.equal(Application.Fields.gitApplicationMetadata_defaultApplicationId, applicationId))
+                .permission(permission)
+                .updateAll(unsetProtected);
     }
 
     /**
-     * Returns a list of application ids which are under the organization with provided organizationId
+     * This method sets protected=true to the Applications whose branch names are present in the given branchNames list.
      *
-     * @param organizationId organization id
-     * @return list of String
+     * @param applicationId default Application id which is stored in git Application Meta data
+     * @param branchNames   list of branches to be protected
+     * @return Mono<Void>
      */
     @Override
-    public Mono<List<String>> getAllApplicationId(String organizationId) {
-        Query query = new Query();
-        query.addCriteria(where(fieldName(QApplication.application.organizationId)).is(organizationId));
-        query.fields().include(fieldName(QApplication.application.id));
-        return mongoOperations.find(query, Application.class)
-                .map(BaseDomain::getId)
-                .collectList();
+    public Mono<Integer> protectBranchedApplications(
+            String applicationId, List<String> branchNames, AclPermission permission) {
+        final BridgeQuery<Application> q = Bridge.<Application>equal(
+                        Application.Fields.gitApplicationMetadata_defaultApplicationId, applicationId)
+                .in(Application.Fields.gitApplicationMetadata_branchName, branchNames);
+
+        BridgeUpdate setProtected =
+                Bridge.update().set(Application.Fields.gitApplicationMetadata_isProtectedBranch, true);
+
+        return queryBuilder().criteria(q).permission(permission).updateAll(setProtected);
     }
 
     @Override
-    public Mono<Long> countByOrganizationId(String organizationId) {
-        Criteria orgIdCriteria = where(fieldName(QApplication.application.organizationId)).is(organizationId);
-        return this.count(List.of(orgIdCriteria));
+    public Flux<String> findBranchedApplicationIdsByBaseApplicationId(String baseApplicationId) {
+
+        final BridgeQuery<Application> q =
+                Bridge.equal(Application.Fields.gitApplicationMetadata_defaultApplicationId, baseApplicationId);
+
+        return queryBuilder().criteria(q).fields(Application.Fields.id).all().map(application -> application.getId());
     }
 
     @Override
-    public Mono<Long> getGitConnectedApplicationWithPrivateRepoCount(String organizationId) {
-        String gitApplicationMetadata = fieldName(QApplication.application.gitApplicationMetadata);
-        Query query = new Query();
-        query.addCriteria(where(fieldName(QApplication.application.organizationId)).is(organizationId));
-        query.addCriteria(where(gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.isRepoPrivate)).is(Boolean.TRUE));
-        query.addCriteria(notDeleted());
-        return mongoOperations.count(query, Application.class);
+    public Flux<String> findAllBranchedApplicationIdsByBranchedApplicationId(
+            String branchedApplicationId, AclPermission permission) {
+        Mono<Application> branchedApplicationMono = this.findById(branchedApplicationId, permission);
+
+        return branchedApplicationMono.flatMapMany(application -> {
+            if (application.getGitArtifactMetadata() != null
+                    && application.getGitArtifactMetadata().getDefaultArtifactId() != null) {
+                return this.findBranchedApplicationIdsByBaseApplicationId(
+                        application.getGitArtifactMetadata().getDefaultArtifactId());
+            } else {
+                return Flux.just(application.getId());
+            }
+        });
     }
 
     @Override
-    public Flux<Application> getGitConnectedApplicationByOrganizationId(String organizationId) {
-        String gitApplicationMetadata = fieldName(QApplication.application.gitApplicationMetadata);
-        // isRepoPrivate and gitAuth will be stored only with default application which ensures we will have only single
-        // application per repo
-        Criteria repoCriteria = where(gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.isRepoPrivate)).exists(Boolean.TRUE);
-        Criteria gitAuthCriteria = where(gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.gitAuth)).exists(Boolean.TRUE);
-        Criteria organizationIdCriteria = where(fieldName(QApplication.application.organizationId)).is(organizationId);
-        return queryAll(List.of(organizationIdCriteria, repoCriteria, gitAuthCriteria), AclPermission.MANAGE_APPLICATIONS);
+    public Flux<Application> findByIdIn(List<String> ids) {
+        final BridgeQuery<Application> q = Bridge.in(Application.Fields.id, ids);
+        return queryBuilder().criteria(q).all();
     }
 
     @Override
-    public Mono<Application> getApplicationByDefaultApplicationIdAndDefaultBranch(String defaultApplicationId) {
-        String gitApplicationMetadata = fieldName(QApplication.application.gitApplicationMetadata);
-
-        Query query = new Query();
-        query.addCriteria(where(gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.defaultApplicationId)).is(defaultApplicationId));
-        query.addCriteria(where(fieldName(QApplication.application.deleted)).ne(true));
-        query.equals(where("this." + gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.branchName))
-                .equals("this." +gitApplicationMetadata + "." + fieldName(QApplication.application.gitApplicationMetadata.defaultBranchName)));
-
-        return mongoOperations.findOne(query,Application.class);
+    public Flux<Application> findByWorkspaceId(String workspaceId) {
+        final BridgeQuery<Application> q = Bridge.equal(Application.Fields.workspaceId, workspaceId);
+        return queryBuilder().criteria(q).all();
     }
 
     @Override
-    public Mono<UpdateResult> setAppTheme(String applicationId, String editModeThemeId, String publishedModeThemeId, AclPermission aclPermission) {
-        Update updateObj = new Update();
-        if(StringUtils.hasLength(editModeThemeId)) {
-            updateObj = updateObj.set(fieldName(QApplication.application.editModeThemeId), editModeThemeId);
-        }
-        if(StringUtils.hasLength(publishedModeThemeId)) {
-            updateObj = updateObj.set(fieldName(QApplication.application.publishedModeThemeId), publishedModeThemeId);
-        }
+    public Mono<Long> countByWorkspaceId(String workspaceId) {
+        final BridgeQuery<Application> q = Bridge.equal(Application.Fields.workspaceId, workspaceId);
+        return queryBuilder().criteria(q).count();
+    }
 
-        return this.updateById(applicationId, updateObj, aclPermission);
+    @Override
+    public Flux<Application> findByClonedFromApplicationId(String clonedFromApplicationId) {
+        final BridgeQuery<Application> q =
+                Bridge.equal(Application.Fields.clonedFromApplicationId, clonedFromApplicationId);
+        return queryBuilder().criteria(q).all();
+    }
+
+    @Override
+    public Mono<Long> countByDeletedAtNull() {
+        final BridgeQuery<Application> q = Bridge.isNull(Application.Fields.deletedAt);
+        return queryBuilder().criteria(q).count();
+    }
+
+    @Override
+    public Mono<Application> findByIdAndExportWithConfiguration(String id, boolean exportWithConfiguration) {
+        final BridgeQuery<Application> q = Bridge.<Application>equal(Application.Fields.id, id)
+                .equal(Application.Fields.exportWithConfiguration, exportWithConfiguration);
+        return queryBuilder().criteria(q).one();
     }
 }

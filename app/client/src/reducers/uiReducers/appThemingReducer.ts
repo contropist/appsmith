@@ -1,12 +1,10 @@
-import { AppTheme } from "entities/AppTheming";
-import { AppThemingMode } from "selectors/appThemingSelectors";
-import { createImmerReducer } from "utils/AppsmithUtils";
-import {
-  ReduxAction,
-  ReduxActionTypes,
-} from "@appsmith/constants/ReduxActionConstants";
+import type { AppTheme } from "entities/AppTheming";
+import type { AppThemingMode } from "selectors/appThemingSelectors";
+import { createImmerReducer } from "utils/ReducerUtils";
+import type { ReduxAction } from "actions/ReduxActionTypes";
+import { ReduxActionTypes } from "ee/constants/ReduxActionConstants";
 
-export type AppThemingState = {
+export interface AppThemingState {
   isSaving: boolean;
   isChanging: boolean;
   stack: AppThemingMode[];
@@ -15,7 +13,7 @@ export type AppThemingState = {
   themesLoading: boolean;
   selectedThemeLoading: boolean;
   isBetaCardShown: boolean;
-};
+}
 
 const initialState: AppThemingState = {
   stack: [],
@@ -32,8 +30,9 @@ const initialState: AppThemingState = {
     created_by: "",
     created_at: "",
     config: {
+      order: 0,
       colors: {
-        backgroundColor: "#f6f6f6",
+        backgroundColor: "#F8FAFC",
         primaryColor: "",
         secondaryColor: "",
       },
@@ -43,8 +42,8 @@ const initialState: AppThemingState = {
     },
     properties: {
       colors: {
-        backgroundColor: "#f6f6f6",
-        primaryColor: "",
+        backgroundColor: "#F8FAFC",
+        primaryColor: "#000",
         secondaryColor: "",
       },
       borderRadius: {},
@@ -71,6 +70,7 @@ const themeReducer = createImmerReducer(initialState, {
   ) => {
     state.themesLoading = false;
     state.themes = action.payload;
+    state.stack = [];
   },
   [ReduxActionTypes.FETCH_SELECTED_APP_THEME_SUCCESS]: (
     state: AppThemingState,
@@ -111,12 +111,6 @@ const themeReducer = createImmerReducer(initialState, {
       (theme) => theme.id !== action.payload.themeId,
     );
   },
-  [ReduxActionTypes.SAVE_APP_THEME_SUCCESS]: (
-    state: AppThemingState,
-    action: ReduxAction<AppTheme>,
-  ) => {
-    state.themes.push(action.payload);
-  },
   [ReduxActionTypes.UPDATE_BETA_CARD_SHOWN]: (
     state: AppThemingState,
     action: ReduxAction<boolean>,
@@ -126,8 +120,17 @@ const themeReducer = createImmerReducer(initialState, {
   [ReduxActionTypes.CLOSE_BETA_CARD_SHOWN]: (state: AppThemingState) => {
     state.isBetaCardShown = true;
   },
-  [ReduxActionTypes.FOCUS_WIDGET]: (state: AppThemingState) => {
+  [ReduxActionTypes.SELECT_WIDGET_INIT]: (state: AppThemingState) => {
     state.stack = [];
+  },
+  [ReduxActionTypes.START_CANVAS_SELECTION]: (state: AppThemingState) => {
+    state.stack = [];
+  },
+  [ReduxActionTypes.RESET_EDITOR_REQUEST]: (state: AppThemingState) => {
+    return {
+      ...state,
+      isSaving: false,
+    };
   },
 });
 

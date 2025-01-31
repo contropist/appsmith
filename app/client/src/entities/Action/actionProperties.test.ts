@@ -1,4 +1,5 @@
-import { Action, PluginType } from "entities/Action/index";
+import type { Action } from "entities/Action";
+import { PluginType } from "entities/Plugin";
 import { getBindingAndReactivePathsOfAction } from "entities/Action/actionProperties";
 import { EvaluationSubstitutionType } from "entities/DataTree/dataTreeFactory";
 
@@ -11,11 +12,13 @@ const DEFAULT_ACTION: Action = {
   dynamicBindingPathList: [],
   executeOnLoad: false,
   id: "",
+  baseId: "",
   invalids: [],
   isValid: false,
   jsonPathKeys: [],
   name: "",
-  organizationId: "",
+  workspaceId: "",
+  applicationId: "",
   pageId: "",
   pluginId: "",
   messages: [],
@@ -28,6 +31,7 @@ describe("getReactivePathsOfAction", () => {
       DEFAULT_ACTION,
       undefined,
     ).reactivePaths;
+
     expect(response).toStrictEqual({
       data: EvaluationSubstitutionType.TEMPLATE,
       isLoading: EvaluationSubstitutionType.TEMPLATE,
@@ -77,8 +81,11 @@ describe("getReactivePathsOfAction", () => {
       },
     };
 
-    const response = getBindingAndReactivePathsOfAction(basicAction, config)
-      .reactivePaths;
+    const response = getBindingAndReactivePathsOfAction(
+      basicAction,
+      config,
+    ).reactivePaths;
+
     expect(response).toStrictEqual({
       data: EvaluationSubstitutionType.TEMPLATE,
       isLoading: EvaluationSubstitutionType.TEMPLATE,
@@ -142,10 +149,12 @@ describe("getReactivePathsOfAction", () => {
       },
     };
 
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const response = getBindingAndReactivePathsOfAction(basicAction, config)
-      .reactivePaths;
+    const response = getBindingAndReactivePathsOfAction(
+      // @ts-expect-error: Types are not available
+      basicAction,
+      config,
+    ).reactivePaths;
+
     expect(response).toStrictEqual({
       data: EvaluationSubstitutionType.TEMPLATE,
       isLoading: EvaluationSubstitutionType.TEMPLATE,
@@ -199,10 +208,12 @@ describe("getReactivePathsOfAction", () => {
       },
     };
 
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const response = getBindingAndReactivePathsOfAction(basicAction, config)
-      .reactivePaths;
+    const response = getBindingAndReactivePathsOfAction(
+      // @ts-expect-error: Types are not available
+      basicAction,
+      config,
+    ).reactivePaths;
+
     expect(response).toStrictEqual({
       data: EvaluationSubstitutionType.TEMPLATE,
       isLoading: EvaluationSubstitutionType.TEMPLATE,
@@ -259,8 +270,11 @@ describe("getReactivePathsOfAction", () => {
       },
     };
 
-    const response = getBindingAndReactivePathsOfAction(basicAction, config)
-      .reactivePaths;
+    const response = getBindingAndReactivePathsOfAction(
+      basicAction,
+      config,
+    ).reactivePaths;
+
     expect(response).toStrictEqual({
       data: EvaluationSubstitutionType.TEMPLATE,
       isLoading: EvaluationSubstitutionType.TEMPLATE,
@@ -271,8 +285,11 @@ describe("getReactivePathsOfAction", () => {
 
     basicAction.actionConfiguration.template.setting = true;
 
-    const response2 = getBindingAndReactivePathsOfAction(basicAction, config)
-      .reactivePaths;
+    const response2 = getBindingAndReactivePathsOfAction(
+      basicAction,
+      config,
+    ).reactivePaths;
+
     expect(response2).toStrictEqual({
       data: EvaluationSubstitutionType.TEMPLATE,
       isLoading: EvaluationSubstitutionType.TEMPLATE,
@@ -282,15 +299,16 @@ describe("getReactivePathsOfAction", () => {
     });
   });
 
-  it.only("returns default list of no config is sent", () => {
+  it("returns default list of no config is sent", () => {
     const response = getBindingAndReactivePathsOfAction(
       DEFAULT_ACTION,
       undefined,
     ).bindingPaths;
+
     expect(response).toStrictEqual({});
   });
 
-  it.only("returns correct values for basic config", () => {
+  it("returns correct values for basic config", () => {
     const config = [
       {
         sectionName: "",
@@ -331,8 +349,11 @@ describe("getReactivePathsOfAction", () => {
       },
     };
 
-    const response = getBindingAndReactivePathsOfAction(basicAction, config)
-      .bindingPaths;
+    const response = getBindingAndReactivePathsOfAction(
+      basicAction,
+      config,
+    ).bindingPaths;
+
     expect(response).toStrictEqual({
       "config.body": EvaluationSubstitutionType.TEMPLATE,
       "config.body2": EvaluationSubstitutionType.TEMPLATE,

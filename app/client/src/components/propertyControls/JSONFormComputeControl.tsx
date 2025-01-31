@@ -1,44 +1,56 @@
 import React from "react";
 import { isString } from "lodash";
 
-import BaseControl, { ControlProps } from "./BaseControl";
+import type { ControlProps } from "./BaseControl";
+import BaseControl from "./BaseControl";
 import { StyledDynamicInput } from "./StyledControls";
-import CodeEditor, {
-  CodeEditorExpected,
-} from "components/editorComponents/CodeEditor";
+import type { CodeEditorExpected } from "components/editorComponents/CodeEditor";
+import type { EditorTheme } from "components/editorComponents/CodeEditor/EditorConfig";
 import {
   EditorModes,
   EditorSize,
-  EditorTheme,
   TabBehaviour,
 } from "components/editorComponents/CodeEditor/EditorConfig";
 import { getDynamicBindings, isDynamicValue } from "utils/DynamicBindingUtils";
 import styled from "styled-components";
-import { JSONFormWidgetProps } from "widgets/JSONFormWidget/widget";
+import type { JSONFormWidgetProps } from "widgets/JSONFormWidget/widget";
+import type { Schema, SchemaItem } from "widgets/JSONFormWidget/constants";
 import {
   ARRAY_ITEM_KEY,
   DataType,
   FIELD_TYPE_TO_POTENTIAL_DATA,
   getBindingTemplate,
   ROOT_SCHEMA_KEY,
-  Schema,
-  SchemaItem,
 } from "widgets/JSONFormWidget/constants";
+import LazyCodeEditor from "components/editorComponents/LazyCodeEditor";
+import { bindingHintHelper } from "components/editorComponents/CodeEditor/hintHelpers";
+import { slashCommandHintHelper } from "components/editorComponents/CodeEditor/commandsHelper";
 
 const PromptMessage = styled.span`
   line-height: 17px;
+
+  > .code-wrapper {
+    font-family: var(--ads-v2-font-family-code);
+    display: inline-flex;
+    align-items: center;
+  }
 `;
 const CurlyBraces = styled.span`
-  color: ${(props) => props.theme.colors.codeMirror.background.hoverState};
-  background-color: #ffffff;
+  color: var(--ads-v2-color-fg);
+  background-color: var(--ads-v2-color-bg-muted);
   border-radius: 2px;
   padding: 2px;
-  margin: 0px 2px;
+  margin: 0 2px 0 0;
   font-size: 10px;
+  font-weight: var(--ads-v2-font-weight-bold);
 `;
 
 // Auxiliary function for processArray, which returns the value for an object field
+// TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function processObject(schema: Schema, defaultValue?: any) {
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const obj: Record<string, any> = {};
 
   Object.values(schema).forEach((schemaItem) => {
@@ -52,6 +64,8 @@ function processObject(schema: Schema, defaultValue?: any) {
 }
 
 // Auxiliary function for processArray, which returns the value for an array field
+// TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function processArray(schema: Schema, defaultValue?: any): any[] {
   if (schema[ARRAY_ITEM_KEY]) {
     return [
@@ -88,8 +102,10 @@ function processArray(schema: Schema, defaultValue?: any): any[] {
  * @param schema
  * @param defaultValue Values that the autocomplete should show for a particular field
  */
-function processSchemaItemAutocomplete(
+export function processSchemaItemAutocomplete(
   schemaItem: SchemaItem,
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   defaultValue?: any,
 ) {
   if (schemaItem.dataType === DataType.OBJECT) {
@@ -107,10 +123,14 @@ export function InputText(props: {
   label: string;
   value: string;
   onChange: (event: React.ChangeEvent<HTMLTextAreaElement> | string) => void;
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   evaluatedValue?: any;
   expected?: CodeEditorExpected;
   placeholder?: string;
   dataTreePath?: string;
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   additionalDynamicData: Record<string, Record<string, any>>;
   theme: EditorTheme;
 }) {
@@ -124,24 +144,31 @@ export function InputText(props: {
     theme,
     value,
   } = props;
+
   return (
     <StyledDynamicInput>
-      <CodeEditor
+      <LazyCodeEditor
+        AIAssisted
         additionalDynamicData={additionalDynamicData}
         dataTreePath={dataTreePath}
         evaluatedValue={evaluatedValue}
         expected={expected}
+        hinting={[bindingHintHelper, slashCommandHintHelper]}
         input={{
           value: value,
           onChange: onChange,
         }}
         mode={EditorModes.TEXT_WITH_BINDING}
         placeholder={placeholder}
+        positionCursorInsideBinding
         promptMessage={
           <PromptMessage>
-            Access the current form using <CurlyBraces>{"{{"}</CurlyBraces>
-            sourceData.fieldName
-            <CurlyBraces>{"}}"}</CurlyBraces>
+            Access the current form using{" "}
+            <span className="code-wrapper">
+              <CurlyBraces>{"{{"}</CurlyBraces>
+              sourceData.fieldName
+              <CurlyBraces>{"}}"}</CurlyBraces>
+            </span>
           </PromptMessage>
         }
         size={EditorSize.EXTENDED}
@@ -163,11 +190,13 @@ export const stringToJS = (string: string): string => {
       }
     })
     .join(" + ");
+
   return js;
 };
 
 export const JSToString = (js: string): string => {
   const segments = js.split(" + ");
+
   return segments
     .map((segment) => {
       if (segment.charAt(0) === "`") {
@@ -178,8 +207,12 @@ export const JSToString = (js: string): string => {
 };
 
 class JSONFormComputeControl extends BaseControl<JSONFormComputeControlProps> {
-  getInputComputedValue = (propertyValue: string) => {
-    const { widgetName } = this.props.widgetProperties;
+  static getInputComputedValue = (
+    propertyValue: string,
+    widgetName: string,
+  ) => {
+    if (!isDynamicValue(propertyValue)) return propertyValue;
+
     const { prefixTemplate, suffixTemplate } = getBindingTemplate(widgetName);
 
     const value = propertyValue.substring(
@@ -192,6 +225,22 @@ class JSONFormComputeControl extends BaseControl<JSONFormComputeControlProps> {
 
   getComputedValue = (value: string) => {
     const { widgetName } = this.props.widgetProperties;
+
+    /**
+     * If the input value is not a binding then there is no need of adding binding template
+     * to the value as it would be of no use.
+     *
+     * Original motivation of doing this to allow REGEX to work. If the value is REGEX, eg - ^\d+$ and the
+     * binding template is added, the REGEX is processed by evaluation and the "\" is considered as a escape and
+     * is removed from the final value and the regex become ^d+$. In order to make it work inside a binding the "\"
+     * has to be escaped by doing ^\\d+$.
+     * As the user is unaware of this binding template being added under the hood, it is not obvious for the user
+     * to escape the "\".
+     * Thus now we only add the binding template around a value only if the original value has a binding as that could
+     * be an indication of the usage of formData/sourceData/fieldState in the value.
+     */
+    if (!isDynamicValue(value)) return value;
+
     const stringToEvaluate = stringToJS(value);
     const { prefixTemplate, suffixTemplate } = getBindingTemplate(widgetName);
 
@@ -236,7 +285,12 @@ class JSONFormComputeControl extends BaseControl<JSONFormComputeControlProps> {
 
     const value = (() => {
       if (propertyValue && isDynamicValue(propertyValue)) {
-        return this.getInputComputedValue(propertyValue);
+        const { widgetName } = this.props.widgetProperties;
+
+        return JSONFormComputeControl.getInputComputedValue(
+          propertyValue,
+          widgetName,
+        );
       }
 
       return propertyValue || defaultValue;

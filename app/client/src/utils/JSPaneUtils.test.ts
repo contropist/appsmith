@@ -1,11 +1,12 @@
-import { PluginType } from "entities/Action";
-import { JSCollection } from "entities/JSCollection";
-import { getDifferenceInJSCollection, ParsedBody } from "./JSPaneUtils";
+import { PluginType } from "entities/Plugin";
+import type { JSCollection } from "entities/JSCollection";
+import type { ParsedBody } from "./JSPaneUtils";
+import { getDifferenceInJSCollection } from "./JSPaneUtils";
 
 const JSObject1: JSCollection = {
   id: "1234",
   applicationId: "app123",
-  organizationId: "org123",
+  workspaceId: "workspace123",
   name: "JSObject2",
   pageId: "page123",
   pluginId: "plugin123",
@@ -16,7 +17,7 @@ const JSObject1: JSCollection = {
     {
       id: "fun2",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun2",
@@ -25,7 +26,7 @@ const JSObject1: JSCollection = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -34,11 +35,11 @@ const JSObject1: JSCollection = {
       collectionId: "1234",
       actionConfiguration: {
         timeoutInMillisecond: 10000,
+        // @ts-expect-error: paginationType does not exists on JSAction
         paginationType: "NONE",
         encodeParamsToggle: true,
         body: "async () => {\n\t\t//use async-await or promises\n\t}",
         jsArguments: [],
-        isAsync: true,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -58,7 +59,7 @@ const JSObject1: JSCollection = {
     {
       id: "fun1",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun1",
@@ -67,7 +68,7 @@ const JSObject1: JSCollection = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -76,11 +77,11 @@ const JSObject1: JSCollection = {
       collectionId: "1234",
       actionConfiguration: {
         timeoutInMillisecond: 10000,
+        // @ts-expect-error: paginationType does not exists on JSAction
         paginationType: "NONE",
         encodeParamsToggle: true,
         body: "() => {\n\t\t//write code here\n\t}",
         jsArguments: [],
-        isAsync: false,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -99,8 +100,7 @@ const JSObject1: JSCollection = {
     },
   ],
   archivedActions: [],
-  body:
-    "export default {\n\tmyVar1: [],\n\tmyVar2: {},\n\tmyFun1: () => {\n\t\t//write code here\n\t},\n\tmyFun2: async () => {\n\t\t//use async-await or promises\n\t}\n}",
+  body: "export default {\n\tmyVar1: [],\n\tmyVar2: {},\n\tmyFun1: () => {\n\t\t//write code here\n\t},\n\tmyFun2: async () => {\n\t\t//use async-await or promises\n\t}\n}",
   variables: [
     {
       name: "myVar1",
@@ -116,7 +116,7 @@ const JSObject1: JSCollection = {
 const JSObject2: JSCollection = {
   id: "1234",
   applicationId: "app123",
-  organizationId: "org123",
+  workspaceId: "workspace123",
   name: "JSObject2",
   pageId: "page123",
   pluginId: "plugin123",
@@ -127,7 +127,7 @@ const JSObject2: JSCollection = {
     {
       id: "fun1",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun1",
@@ -136,7 +136,7 @@ const JSObject2: JSCollection = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -145,11 +145,11 @@ const JSObject2: JSCollection = {
       collectionId: "1234",
       actionConfiguration: {
         timeoutInMillisecond: 10000,
+        // @ts-expect-error: paginationType does not exists on JSAction
         paginationType: "NONE",
         encodeParamsToggle: true,
         body: "() => {\n\t\t//write code here\n\t}",
         jsArguments: [],
-        isAsync: false,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -169,7 +169,7 @@ const JSObject2: JSCollection = {
     {
       id: "fun2",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun2",
@@ -178,7 +178,7 @@ const JSObject2: JSCollection = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -187,11 +187,11 @@ const JSObject2: JSCollection = {
       collectionId: "1234",
       actionConfiguration: {
         timeoutInMillisecond: 10000,
+        // @ts-expect-error: paginationType does not exists on JSAction
         paginationType: "NONE",
         encodeParamsToggle: true,
         body: "async () => {\n\t\t//use async-await or promises\n\t}",
         jsArguments: [],
-        isAsync: true,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -210,8 +210,7 @@ const JSObject2: JSCollection = {
     },
   ],
   archivedActions: [],
-  body:
-    "export default {\n\tmyVar1: [],\n\tmyVar2: {},\n\tmyFun1: () => {\n\t\t//write code here\n\t},\n\tmyFun2: async () => {\n\t\t//use async-await or promises\n\t}\n}",
+  body: "export default {\n\tmyVar1: [],\n\tmyVar2: {},\n\tmyFun1: () => {\n\t\t//write code here\n\t},\n\tmyFun2: async () => {\n\t\t//use async-await or promises\n\t}\n}",
   variables: [
     {
       name: "myVar1",
@@ -230,13 +229,11 @@ const parsedBodyWithRenamedAction: ParsedBody = {
       name: "myFun11",
       body: "() => {\n\t\t//write code here\n\t}",
       arguments: [],
-      isAsync: false,
     },
     {
       name: "myFun2",
       body: "async () => {\n\t\t//use async-await or promises\n\t}",
       arguments: [],
-      isAsync: true,
     },
   ],
   variables: [
@@ -257,7 +254,7 @@ const resultRenamedActions = {
     {
       id: "fun1",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun11",
@@ -266,7 +263,7 @@ const resultRenamedActions = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -279,7 +276,6 @@ const resultRenamedActions = {
         encodeParamsToggle: true,
         body: "() => {\n\t\t//write code here\n\t}",
         jsArguments: [],
-        isAsync: false,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -302,6 +298,8 @@ const resultRenamedActions = {
     {
       id: "fun1",
       collectionId: "1234",
+      moduleId: undefined,
+      workflowId: undefined,
       oldName: "myFun1",
       newName: "myFun11",
       pageId: "page123",
@@ -316,7 +314,6 @@ const parsedBodyWithDeletedAction: ParsedBody = {
       name: "myFun1",
       body: "() => {\n\t\t//write code here\n\t}",
       arguments: [],
-      isAsync: false,
     },
   ],
   variables: [
@@ -338,7 +335,7 @@ const resultDeletedActions = {
     {
       id: "fun2",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun2",
@@ -347,7 +344,7 @@ const resultDeletedActions = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -360,7 +357,6 @@ const resultDeletedActions = {
         encodeParamsToggle: true,
         body: "async () => {\n\t\t//use async-await or promises\n\t}",
         jsArguments: [],
-        isAsync: true,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -388,13 +384,11 @@ const parsedBodyWithChangedVariable: ParsedBody = {
       name: "myFun1",
       body: "() => {\n\t\t//write code here\n\t}",
       arguments: [],
-      isAsync: false,
     },
     {
       name: "myFun2",
       body: "async () => {\n\t\t//use async-await or promises\n\t}",
       arguments: [],
-      isAsync: true,
     },
   ],
   variables: [
@@ -427,14 +421,11 @@ const parsedBodyWithChangeInBody: ParsedBody = {
       name: "myFun1",
       body: "() => {\n\t\t//write code here\n\t}",
       arguments: [],
-      isAsync: false,
     },
     {
       name: "myFun2",
-      body:
-        "async () => {\n\t\t//use async-await or promises\n\tconsole.log('content changed')}",
+      body: "async () => {\n\t\t//use async-await or promises\n\tconsole.log('content changed')}",
       arguments: [],
-      isAsync: true,
     },
   ],
   variables: [
@@ -455,7 +446,7 @@ const resultChangedBody = {
     {
       id: "fun2",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun2",
@@ -464,7 +455,7 @@ const resultChangedBody = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -475,10 +466,8 @@ const resultChangedBody = {
         timeoutInMillisecond: 10000,
         paginationType: "NONE",
         encodeParamsToggle: true,
-        body:
-          "async () => {\n\t\t//use async-await or promises\n\tconsole.log('content changed')}",
+        body: "async () => {\n\t\t//use async-await or promises\n\tconsole.log('content changed')}",
         jsArguments: [],
-        isAsync: true,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -506,7 +495,6 @@ const parsedBodyWithChangedParameters: ParsedBody = {
       name: "myFun1",
       body: "() => {\n\t\t//write code here\n\t}",
       arguments: [],
-      isAsync: false,
     },
     {
       name: "myFun2",
@@ -515,7 +503,6 @@ const parsedBodyWithChangedParameters: ParsedBody = {
         { name: "a", value: undefined },
         { name: "b", value: undefined },
       ],
-      isAsync: true,
     },
   ],
   variables: [
@@ -536,7 +523,7 @@ const resultChangedParameters = {
     {
       id: "fun2",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun2",
@@ -545,7 +532,7 @@ const resultChangedParameters = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -561,7 +548,6 @@ const resultChangedParameters = {
           { name: "a", value: undefined },
           { name: "b", value: undefined },
         ],
-        isAsync: true,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -590,13 +576,11 @@ const parsedBodyWithRemovedAsync: ParsedBody = {
       name: "myFun1",
       body: "() => {\n\t\t//write code here\n\t}",
       arguments: [],
-      isAsync: false,
     },
     {
       name: "myFun2",
       body: "() => {\n\t\t//use async-await or promises\n\t}",
       arguments: [],
-      isAsync: false,
     },
   ],
   variables: [
@@ -617,7 +601,7 @@ const resultRemovedAsync = {
     {
       id: "fun2",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun2",
@@ -626,7 +610,7 @@ const resultRemovedAsync = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -639,7 +623,6 @@ const resultRemovedAsync = {
         encodeParamsToggle: true,
         body: "() => {\n\t\t//use async-await or promises\n\t}",
         jsArguments: [],
-        isAsync: false,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -668,13 +651,11 @@ const parsedBodyWithAddedAsync: ParsedBody = {
       name: "myFun1",
       body: "async () => {\n\t\t//write code here\n\t}",
       arguments: [],
-      isAsync: true,
     },
     {
       name: "myFun2",
       body: "async () => {\n\t\t//use async-await or promises\n\t}",
       arguments: [],
-      isAsync: true,
     },
   ],
   variables: [
@@ -695,7 +676,7 @@ const resultAddedAsync = {
     {
       id: "fun1",
       applicationId: "app123",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       pluginType: "JS",
       pluginId: "plugin123",
       name: "myFun1",
@@ -704,7 +685,7 @@ const resultAddedAsync = {
         userPermissions: [],
         name: "UNUSED_DATASOURCE",
         pluginId: "plugin123",
-        organizationId: "org123",
+        workspaceId: "workspace123",
         messages: [],
         isValid: true,
         new: true,
@@ -717,7 +698,6 @@ const resultAddedAsync = {
         encodeParamsToggle: true,
         body: "async () => {\n\t\t//write code here\n\t}",
         jsArguments: [],
-        isAsync: true,
       },
       executeOnLoad: false,
       clientSideExecution: true,
@@ -746,19 +726,16 @@ const parsedBodyWithAddedAction: ParsedBody = {
       name: "myFun1",
       body: "() => {\n\t\t//write code here\n\t}",
       arguments: [],
-      isAsync: false,
     },
     {
       name: "myFun2",
       body: "async () => {\n\t\t//use async-await or promises\n\t}",
       arguments: [],
-      isAsync: true,
     },
     {
       name: "myFun3",
       body: "async () => {\n\t\t//use async-await or promises\n\t}",
       arguments: [],
-      isAsync: true,
     },
   ],
   variables: [
@@ -780,10 +757,10 @@ const resultAddedAction = {
       executeOnLoad: false,
       pageId: "page123",
       collectionId: "1234",
-      organizationId: "org123",
+      workspaceId: "workspace123",
       actionConfiguration: {
         body: "async () => {\n\t\t//use async-await or promises\n\t}",
-        isAsync: true,
+
         timeoutInMillisecond: 0,
         jsArguments: [],
       },
@@ -801,6 +778,7 @@ describe("getDifferenceInJSCollection", () => {
       parsedBodyWithRenamedAction,
       JSObject1,
     );
+
     expect(resultRenamedActions).toStrictEqual(result);
   });
 
@@ -809,6 +787,7 @@ describe("getDifferenceInJSCollection", () => {
       parsedBodyWithDeletedAction,
       JSObject1,
     );
+
     expect(resultDeletedActions).toStrictEqual(result);
   });
 
@@ -817,6 +796,7 @@ describe("getDifferenceInJSCollection", () => {
       parsedBodyWithAddedAction,
       JSObject2,
     );
+
     expect(resultAddedAction).toStrictEqual(result);
   });
 
@@ -825,6 +805,7 @@ describe("getDifferenceInJSCollection", () => {
       parsedBodyWithChangedVariable,
       JSObject2,
     );
+
     expect(resultChangedVariable).toStrictEqual(result);
   });
 
@@ -833,6 +814,7 @@ describe("getDifferenceInJSCollection", () => {
       parsedBodyWithChangeInBody,
       JSObject2,
     );
+
     expect(resultChangedBody).toStrictEqual(result);
   });
 
@@ -841,6 +823,7 @@ describe("getDifferenceInJSCollection", () => {
       parsedBodyWithChangedParameters,
       JSObject2,
     );
+
     expect(resultChangedParameters).toStrictEqual(result);
   });
   it("gets removed async tag in difference", () => {
@@ -848,6 +831,7 @@ describe("getDifferenceInJSCollection", () => {
       parsedBodyWithRemovedAsync,
       JSObject2,
     );
+
     expect(resultRemovedAsync).toStrictEqual(result);
   });
 
@@ -856,6 +840,7 @@ describe("getDifferenceInJSCollection", () => {
       parsedBodyWithAddedAsync,
       JSObject2,
     );
+
     expect(resultAddedAsync).toStrictEqual(result);
   });
 });

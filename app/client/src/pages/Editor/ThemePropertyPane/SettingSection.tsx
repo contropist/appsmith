@@ -1,9 +1,27 @@
 import * as Sentry from "@sentry/react";
+import type { ComponentPropsWithoutRef } from "react";
 import React, { useState } from "react";
 import { Collapse } from "@blueprintjs/core";
-import ArrowRight from "remixicon-react/ArrowRightSLineIcon";
+import styled from "styled-components";
+import { Icon } from "@appsmith/ads";
 
-interface SettingSectionProps {
+const SettingsWrapper = styled.div`
+  color: var(--ads-v2-color-fg);
+
+  .bp3-collapse,
+  .bp3-collapse-body {
+    transition: none;
+  }
+`;
+
+const Title = styled.p`
+  font-size: var(--ads-v2-font-size-4);
+  line-height: 1.2rem;
+  font-weight: var(--ads-v2-font-weight-bold);
+  color: var(--ads-v2-color-fg-emphasis);
+`;
+
+interface SettingSectionProps extends ComponentPropsWithoutRef<"div"> {
   isDefaultOpen?: boolean;
   className?: string;
   title: string;
@@ -12,30 +30,27 @@ interface SettingSectionProps {
 }
 
 export function SettingSection(props: SettingSectionProps) {
-  const { className = "", collapsible = true } = props;
-  const [isOpen, setOpen] = useState(props.isDefaultOpen);
+  const { className = "", collapsible = true, isDefaultOpen, ...rest } = props;
+  const [isOpen, setOpen] = useState(isDefaultOpen);
 
   return (
-    <div className={className}>
+    <SettingsWrapper className={className} {...rest}>
       <div
-        className={` cursor-pointer flex items-center justify-between capitalize text-base text-gray-800 `}
+        className={` cursor-pointer flex items-center justify-between capitalize text-sm`}
         onClick={() => setOpen((isOpen) => !isOpen)}
       >
-        <div className="font-normal">{props.title}</div>
+        <Title>{props.title}</Title>
         {collapsible && (
-          <div>
-            <ArrowRight
-              className={` transform transition-all ${
-                isOpen ? "-rotate-90" : "rotate-90"
-              }`}
-            />
-          </div>
+          <Icon
+            name={isOpen ? "arrow-down-s-line" : "arrow-right-s-line"}
+            size="sm"
+          />
         )}
       </div>
-      <Collapse isOpen={isOpen}>
-        <div className="pt-2 space-y-3">{props.children}</div>
+      <Collapse isOpen={isOpen} transitionDuration={0}>
+        <div className="pt-2 pb-1 space-y-3">{props.children}</div>
       </Collapse>
-    </div>
+    </SettingsWrapper>
   );
 }
 

@@ -1,7 +1,8 @@
-import { DataTree } from "entities/DataTree/dataTreeFactory";
+import type { DataTree } from "entities/DataTree/dataTreeTypes";
 import { get, set } from "lodash";
-import { isJSObject } from "workers/evaluationUtils";
-import { DependencyMap } from "./DynamicBindingUtils";
+import { isJSObject, isWidget } from "ee/workers/Evaluation/evaluationUtils";
+import type { DependencyMap } from "./DynamicBindingUtils";
+import WidgetFactory from "../WidgetProvider/factory";
 
 type GroupedDependencyMap = Record<string, DependencyMap>;
 
@@ -17,7 +18,9 @@ export const groupAndFilterDependantsMap = (
   Object.entries(inverseMap).forEach(([fullDependencyPath, dependants]) => {
     const dependencyEntityName = fullDependencyPath.split(".")[0];
     const dataTreeEntity = dataTree[dependencyEntityName];
+
     if (!dataTreeEntity) return;
+
     const isJS_Object = isJSObject(dataTreeEntity);
 
     const entityDependantsMap = entitiesDepMap[dependencyEntityName] || {};
@@ -25,7 +28,7 @@ export const groupAndFilterDependantsMap = (
 
     entityPathDependants = entityPathDependants.concat(
       isJS_Object
-        ? /* include self-dependent properties for JsObjects 
+        ? /* include self-dependent properties for JsObjects
               e.g. {
                 "JsObject.internalFunc": [ "JsObject.fun1", "JsObject" ]
               }
@@ -47,6 +50,7 @@ export const groupAndFilterDependantsMap = (
     );
 
     if (!(entityPathDependants.length > 0)) return;
+
     set(
       entitiesDepMap,
       [dependencyEntityName, fullDependencyPath],
@@ -57,20 +61,22 @@ export const groupAndFilterDependantsMap = (
   return entitiesDepMap;
 };
 
-// get entities that depend on a given list of entites
-// e.g. widgets that depend on a list of actions
-export const getEntityDependants = (
+// get entity paths that depend on a given list of entites
+// e.g. widget paths that depend on a list of actions
+export const getEntityDependantPaths = (
   fullEntityPaths: string[],
   allEntitiesDependantsmap: GroupedDependencyMap,
   visitedPaths: Set<string>,
-): { names: Set<string>; fullPaths: Set<string> } => {
+): Set<string> => {
   const dependantEntityNames = new Set<string>();
   const dependantEntityFullPaths = new Set<string>();
 
   fullEntityPaths.forEach((fullEntityPath) => {
     const entityPathArray = fullEntityPath.split(".");
     const entityName = entityPathArray[0];
+
     if (!(entityName in allEntitiesDependantsmap)) return;
+
     const entityDependantsMap = allEntitiesDependantsmap[entityName];
 
     // goes through properties of an entity
@@ -88,24 +94,24 @@ export const getEntityDependants = (
         // goes through dependants of a property
         dependants.forEach((dependantPath) => {
           const dependantEntityName = dependantPath.split(".")[0];
+
           // Marking visited paths to avoid infinite recursion.
           if (visitedPaths.has(dependantPath)) {
             return;
           }
+
           visitedPaths.add(dependantPath);
 
           dependantEntityNames.add(dependantEntityName);
           dependantEntityFullPaths.add(dependantPath);
 
-          const childDependants = getEntityDependants(
+          const childDependants = getEntityDependantPaths(
             [dependantPath],
             allEntitiesDependantsmap,
             visitedPaths,
           );
-          childDependants.names.forEach((childDependantName) => {
-            dependantEntityNames.add(childDependantName);
-          });
-          childDependants.fullPaths.forEach((childDependantPath) => {
+
+          childDependants.forEach((childDependantPath) => {
             dependantEntityFullPaths.add(childDependantPath);
           });
         });
@@ -113,11 +119,11 @@ export const getEntityDependants = (
     );
   });
 
-  return { names: dependantEntityNames, fullPaths: dependantEntityFullPaths };
+  return dependantEntityFullPaths;
 };
 
 export const findLoadingEntities = (
-  isLoadingActions: string[],
+  loadingActions: string[],
   dataTree: DataTree,
   inverseMap: DependencyMap,
 ): Set<string> => {
@@ -125,15 +131,34 @@ export const findLoadingEntities = (
     inverseMap,
     dataTree,
   );
-  const loadingEntitiesDetails = getEntityDependants(
-    isLoadingActions,
+  const loadingEntityPaths = getEntityDependantPaths(
+    loadingActions,
     entitiesDependantsMap,
     new Set<string>(),
   );
 
   // check animateLoading is active on current widgets and set
   const filteredLoadingEntityNames = new Set<string>();
-  loadingEntitiesDetails.names.forEach((entityName) => {
+
+  loadingEntityPaths.forEach((entityPath) => {
+    const entityPathArray = entityPath.split(".");
+    const entityName = entityPathArray[0];
+    const widget = get(dataTree, [entityName]);
+
+    if (isWidget(widget)) {
+      const loadingProperties = WidgetFactory.getLoadingProperties(widget.type);
+
+      // check if propertyPath is listed in widgetConfig
+      if (
+        entityPathArray.length > 1 &&
+        loadingProperties &&
+        !loadingProperties.some((propRegExp) => propRegExp.test(entityPath))
+      ) {
+        return;
+      }
+    }
+
+    // check animateLoading is active on current widgets and set
     get(dataTree, [entityName, "animateLoading"]) === true &&
       filteredLoadingEntityNames.add(entityName);
   });

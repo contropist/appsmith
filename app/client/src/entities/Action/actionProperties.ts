@@ -1,4 +1,4 @@
-import { Action } from "entities/Action/index";
+import type { Action } from "entities/Action/index";
 import _ from "lodash";
 import { EvaluationSubstitutionType } from "entities/DataTree/dataTreeFactory";
 import {
@@ -11,8 +11,12 @@ import {
   SortingSubComponent,
   WhereClauseSubComponent,
   allowedControlTypes,
+  getViewType,
 } from "components/formControls/utils";
 import formControlTypes from "utils/formControl/formControlTypes";
+import { getAllBindingPathsForGraphqlPagination } from "utils/editor/EditorBindingPaths";
+import EditorControlTypes from "utils/editor/EditorControlTypes";
+import type { DynamicPath } from "utils/DynamicBindingUtils";
 
 const dynamicFields = [
   formControlTypes.QUERY_DYNAMIC_TEXT,
@@ -29,12 +33,16 @@ const getCorrectEvaluationSubstitutionType = (substitutionType?: string) => {
       return EvaluationSubstitutionType.PARAMETER;
     }
   }
+
   return EvaluationSubstitutionType.TEMPLATE;
 };
 
 export const getBindingAndReactivePathsOfAction = (
   action: Action,
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   formConfig?: any[],
+  dynamicBindingPathList?: DynamicPath[],
 ): { reactivePaths: ReactivePaths; bindingPaths: BindingPaths } => {
   let reactivePaths: ReactivePaths = {
     data: EvaluationSubstitutionType.TEMPLATE,
@@ -42,21 +50,35 @@ export const getBindingAndReactivePathsOfAction = (
     datasourceUrl: EvaluationSubstitutionType.TEMPLATE,
   };
   const bindingPaths: BindingPaths = {};
+
   if (!formConfig) {
+    dynamicBindingPathList?.forEach((dynamicPath) => {
+      reactivePaths[dynamicPath.key] = EvaluationSubstitutionType.TEMPLATE;
+    });
     reactivePaths = {
       ...reactivePaths,
       config: EvaluationSubstitutionType.TEMPLATE,
     };
+
     return {
       reactivePaths,
       bindingPaths,
     };
   }
+
+  // NOTE:
+  // there's a difference in how the bindingPaths should look when in component and json viewType mode.
+  // for example in json mode, sorting component bindingPath should be formData.sortBy.data.(column | order)
+  // in component mode, the sorting component binding path should be more specific e.g. formData.sortBy.data[0].(column | order)
+  // the condition below checks if the viewType of the config and computes the binding path respectively
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recursiveFindBindingPaths = (formConfig: any) => {
     if (formConfig.children) {
       formConfig.children.forEach(recursiveFindBindingPaths);
     } else {
       const configPath = getDataTreeActionConfigPath(formConfig.configProperty);
+
       if (dynamicFields.includes(formConfig.controlType)) {
         if (!isHidden(action, formConfig.hidden)) {
           bindingPaths[configPath] = getCorrectEvaluationSubstitutionType(
@@ -64,30 +86,37 @@ export const getBindingAndReactivePathsOfAction = (
           );
         }
       } else if (
+        // this else if checks the viewType and computes the binding path respectively(as explained above),
+        // while the other else-ifs below checks specifically for component viewType mode.
         "alternateViewTypes" in formConfig &&
         Array.isArray(formConfig.alternateViewTypes) &&
         formConfig.alternateViewTypes.length > 0 &&
-        formConfig.alternateViewTypes.includes(ViewTypes.JSON)
+        formConfig.alternateViewTypes.includes(ViewTypes.JSON) &&
+        getViewType(action, formConfig.configProperty) === ViewTypes.JSON
       ) {
         bindingPaths[configPath] = getCorrectEvaluationSubstitutionType(
-          alternateViewTypeInputConfig.evaluationSubstitutionType,
+          alternateViewTypeInputConfig().evaluationSubstitutionType,
         );
       } else if (formConfig.controlType === formControlTypes.ARRAY_FIELD) {
         let actionValue = _.get(action, formConfig.configProperty);
+
         if (Array.isArray(actionValue)) {
           actionValue = actionValue.filter((val) => val);
+
           for (let i = 0; i < actionValue.length; i++) {
+            // TODO: Fix this the next time the file is edited
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             formConfig.schema.forEach((schemaField: any) => {
               if (
                 schemaField.key in actionValue[i] &&
                 dynamicFields.includes(schemaField.controlType)
               ) {
                 const arrayConfigPath = `${configPath}[${i}].${schemaField.key}`;
-                bindingPaths[
-                  arrayConfigPath
-                ] = getCorrectEvaluationSubstitutionType(
-                  formConfig.evaluationSubstitutionType,
-                );
+
+                bindingPaths[arrayConfigPath] =
+                  getCorrectEvaluationSubstitutionType(
+                    formConfig.evaluationSubstitutionType,
+                  );
               }
             });
           }
@@ -95,6 +124,8 @@ export const getBindingAndReactivePathsOfAction = (
       } else if (formConfig.controlType === formControlTypes.WHERE_CLAUSE) {
         const recursiveFindBindingPathsForWhereClause = (
           newConfigPath: string,
+          // TODO: Fix this the next time the file is edited
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           actionValue: any,
         ) => {
           if (
@@ -102,12 +133,15 @@ export const getBindingAndReactivePathsOfAction = (
             actionValue.hasOwnProperty("children") &&
             Array.isArray(actionValue.children)
           ) {
+            // TODO: Fix this the next time the file is edited
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             actionValue.children.forEach((value: any, index: number) => {
               const childrenPath = getBindingOrConfigPathsForWhereClauseControl(
                 newConfigPath,
                 WhereClauseSubComponent.Children,
                 index,
               );
+
               recursiveFindBindingPathsForWhereClause(childrenPath, value);
             });
           } else {
@@ -117,16 +151,19 @@ export const getBindingAndReactivePathsOfAction = (
                 WhereClauseSubComponent.Key,
                 undefined,
               );
+
               bindingPaths[keyPath] = getCorrectEvaluationSubstitutionType(
                 formConfig.evaluationSubstitutionType,
               );
             }
+
             if (actionValue.hasOwnProperty("value")) {
               const valuePath = getBindingOrConfigPathsForWhereClauseControl(
                 newConfigPath,
                 WhereClauseSubComponent.Value,
                 undefined,
               );
+
               bindingPaths[valuePath] = getCorrectEvaluationSubstitutionType(
                 formConfig.evaluationSubstitutionType,
               );
@@ -135,17 +172,21 @@ export const getBindingAndReactivePathsOfAction = (
         };
 
         const actionValue = _.get(action, formConfig.configProperty);
+
         if (
           actionValue &&
           actionValue.hasOwnProperty("children") &&
           Array.isArray(actionValue.children)
         ) {
+          // TODO: Fix this the next time the file is edited
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           actionValue.children.forEach((value: any, index: number) => {
             const childrenPath = getBindingOrConfigPathsForWhereClauseControl(
               configPath,
               WhereClauseSubComponent.Children,
               index,
             );
+
             recursiveFindBindingPathsForWhereClause(childrenPath, value);
           });
         }
@@ -158,6 +199,7 @@ export const getBindingAndReactivePathsOfAction = (
           PaginationSubComponent.Limit,
           configPath,
         );
+
         bindingPaths[limitPath] = getCorrectEvaluationSubstitutionType(
           formConfig.evaluationSubstitutionType,
         );
@@ -166,13 +208,17 @@ export const getBindingAndReactivePathsOfAction = (
         );
       } else if (formConfig.controlType === formControlTypes.SORTING) {
         const actionValue = _.get(action, formConfig.configProperty);
+
         if (Array.isArray(actionValue)) {
+          // TODO: Fix this the next time the file is edited
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           actionValue.forEach((fieldConfig: any, index: number) => {
             const columnPath = getBindingOrConfigPathsForSortingControl(
               SortingSubComponent.Column,
               configPath,
               index,
             );
+
             bindingPaths[columnPath] = getCorrectEvaluationSubstitutionType(
               formConfig.evaluationSubstitutionType,
             );
@@ -181,6 +227,7 @@ export const getBindingAndReactivePathsOfAction = (
               configPath,
               index,
             );
+
             bindingPaths[OrderPath] = getCorrectEvaluationSubstitutionType(
               formConfig.evaluationSubstitutionType,
             );
@@ -188,26 +235,45 @@ export const getBindingAndReactivePathsOfAction = (
         }
       } else if (formConfig.controlType === formControlTypes.ENTITY_SELECTOR) {
         if (Array.isArray(formConfig.schema)) {
-          formConfig.schema.forEach((schemaField: any, index: number) => {
-            if (allowedControlTypes.includes(schemaField.controlType)) {
-              const columnPath = getBindingOrConfigPathsForEntitySelectorControl(
-                configPath,
-                index,
-              );
-              bindingPaths[columnPath] = getCorrectEvaluationSubstitutionType(
-                formConfig.evaluationSubstitutionType,
+          // TODO: Fix this the next time the file is edited
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          formConfig.schema.forEach((schemaField: any) => {
+            let columnPath = "";
+
+            if (
+              allowedControlTypes.includes(schemaField.controlType) &&
+              !!schemaField.configProperty
+            ) {
+              columnPath = getBindingOrConfigPathsForEntitySelectorControl(
+                schemaField.configProperty,
               );
             }
+
+            bindingPaths[columnPath] = getCorrectEvaluationSubstitutionType(
+              formConfig.evaluationSubstitutionType,
+            );
           });
         }
+      } else if (
+        formConfig.controlType === EditorControlTypes.E_GRAPHQL_PAGINATION
+      ) {
+        const allPaths = getAllBindingPathsForGraphqlPagination(configPath);
+
+        allPaths.forEach(({ key, value }) => {
+          if (key && value) {
+            bindingPaths[key] = value as EvaluationSubstitutionType;
+          }
+        });
       }
     }
   };
+
   formConfig.forEach(recursiveFindBindingPaths);
   reactivePaths = {
     ...reactivePaths,
     ...bindingPaths,
   };
+
   return { reactivePaths, bindingPaths };
 };
 
@@ -244,14 +310,15 @@ export const getBindingOrConfigPathsForWhereClauseControl = (
   } else if (configPath && fieldName) {
     return `${configPath}.${fieldName}`;
   }
+
   return "";
 };
 
 export const getBindingOrConfigPathsForEntitySelectorControl = (
   baseConfigProperty: string,
-  index: number,
 ): string => {
-  return `${baseConfigProperty}.column_${index + 1}`;
+  // Entity selector schemas/components have their own distinct configProperties and have little to do with their parents(They are independent entities).
+  return getDataTreeActionConfigPath(baseConfigProperty);
 };
 
 export const getDataTreeActionConfigPath = (propertyPath: string) =>

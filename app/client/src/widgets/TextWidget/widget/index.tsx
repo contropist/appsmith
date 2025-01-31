@@ -1,23 +1,171 @@
-import React, { ReactNode } from "react";
-
-import { TextSize } from "constants/WidgetConstants";
-import { countOccurrences } from "workers/helpers";
-
+import type { ReactNode } from "react";
+import React from "react";
+import type { TextSize } from "constants/WidgetConstants";
+import { countOccurrences } from "workers/Evaluation/helpers";
 import { ValidationTypes } from "constants/WidgetValidation";
-import { DerivedPropertiesMap } from "utils/WidgetFactory";
-
-import { Color } from "constants/Colors";
-import BaseWidget, { WidgetProps, WidgetState } from "widgets/BaseWidget";
-import TextComponent, { TextAlign } from "../component";
-import { ContainerStyle } from "widgets/ContainerWidget/component";
-import { AutocompleteDataType } from "utils/autocomplete/TernServer";
-import { OverflowTypes } from "../constants";
+import type { DerivedPropertiesMap } from "WidgetProvider/factory";
 import WidgetStyleContainer from "components/designSystems/appsmith/WidgetStyleContainer";
+import type { Color } from "constants/Colors";
+import type { SetterConfig, Stylesheet } from "entities/AppTheming";
 import { pick } from "lodash";
+import { AutocompleteDataType } from "utils/autocomplete/AutocompleteDataType";
+import type { WidgetProps, WidgetState } from "widgets/BaseWidget";
+import BaseWidget from "widgets/BaseWidget";
+import type { ContainerStyle } from "widgets/ContainerWidget/component";
+import type { TextAlign } from "../component";
+import TextComponent from "../component";
+import { DefaultAutocompleteDefinitions } from "widgets/WidgetUtils";
+import type {
+  AnvilConfig,
+  AutocompletionDefinitions,
+} from "WidgetProvider/constants";
+import { FILL_WIDGET_MIN_WIDTH } from "constants/minWidthConstants";
+import { DEFAULT_FONT_SIZE, WIDGET_TAGS } from "constants/WidgetConstants";
+import { ResponsiveBehavior } from "layoutSystems/common/utils/constants";
+import { OverflowTypes } from "../constants";
+import IconSVG from "../icon.svg";
+import ThumbnailSVG from "../thumbnail.svg";
+import { DynamicHeight } from "utils/WidgetFeatures";
+import { BlueprintOperationTypes } from "WidgetProvider/constants";
+import type {
+  SnipingModeProperty,
+  PropertyUpdates,
+} from "WidgetProvider/constants";
+import { get } from "lodash";
+import type { DynamicPath } from "utils/DynamicBindingUtils";
+import { isDynamicValue } from "utils/DynamicBindingUtils";
 
 const MAX_HTML_PARSING_LENGTH = 1000;
+
 class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
-  static getPropertyPaneConfig() {
+  static type = "TEXT_WIDGET";
+
+  static getConfig() {
+    return {
+      name: "Text",
+      iconSVG: IconSVG,
+      thumbnailSVG: ThumbnailSVG,
+      tags: [WIDGET_TAGS.SUGGESTED_WIDGETS, WIDGET_TAGS.CONTENT],
+      searchTags: ["typography", "paragraph", "label"],
+    };
+  }
+
+  static getFeatures() {
+    return {
+      dynamicHeight: {
+        sectionIndex: 0,
+        active: true,
+      },
+    };
+  }
+
+  static getDefaults() {
+    return {
+      text: "Hello {{appsmith.user.name || appsmith.user.email}}",
+      fontSize: DEFAULT_FONT_SIZE,
+      fontStyle: "BOLD",
+      textAlign: "LEFT",
+      textColor: "#231F20",
+      rows: 4,
+      columns: 16,
+      widgetName: "Text",
+      shouldTruncate: false,
+      overflow: OverflowTypes.NONE,
+      version: 1,
+      animateLoading: true,
+      responsiveBehavior: ResponsiveBehavior.Fill,
+      minWidth: FILL_WIDGET_MIN_WIDTH,
+      blueprint: {
+        operations: [
+          {
+            type: BlueprintOperationTypes.MODIFY_PROPS,
+            fn: (widget: WidgetProps & { children?: WidgetProps[] }) => {
+              if (!isDynamicValue(widget.text)) {
+                return [];
+              }
+
+              const dynamicBindingPathList: DynamicPath[] = [
+                ...get(widget, "dynamicBindingPathList", []),
+              ];
+
+              dynamicBindingPathList.push({
+                key: "text",
+              });
+
+              const updatePropertyMap = [
+                {
+                  widgetId: widget.widgetId,
+                  propertyName: "dynamicBindingPathList",
+                  propertyValue: dynamicBindingPathList,
+                },
+              ];
+
+              return updatePropertyMap;
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  static getAutoLayoutConfig() {
+    return {
+      autoDimension: {
+        height: true,
+      },
+      disabledPropsDefaults: {
+        overflow: OverflowTypes.NONE,
+        dynamicHeight: DynamicHeight.AUTO_HEIGHT,
+      },
+      defaults: {
+        columns: 4,
+      },
+      widgetSize: [
+        {
+          viewportMinWidth: 0,
+          configuration: () => {
+            return {
+              minWidth: "120px",
+              minHeight: "40px",
+            };
+          },
+        },
+      ],
+      disableResizeHandles: {
+        vertical: true,
+      },
+    };
+  }
+
+  static getAnvilConfig(): AnvilConfig | null {
+    return {
+      isLargeWidget: false,
+      widgetSize: {
+        maxHeight: {},
+        maxWidth: {},
+        minHeight: { base: "40px" },
+        minWidth: { base: "120px" },
+      },
+    };
+  }
+
+  static getMethods() {
+    return {
+      getSnipingModeUpdates: (
+        propValueMap: SnipingModeProperty,
+      ): PropertyUpdates[] => {
+        return [
+          {
+            propertyPath: "text",
+            propertyValue: propValueMap.data,
+            isDynamicPropertyPath: true,
+          },
+        ];
+      },
+    };
+  }
+
+  static getPropertyPaneContentConfig() {
     return [
       {
         sectionName: "General",
@@ -37,20 +185,21 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
           },
           {
             propertyName: "overflow",
-            label: "Overflow",
+            label: "Overflow Text",
             helpText: "Controls the text behavior when length of text exceeds",
-            controlType: "DROP_DOWN",
+            controlType: "ICON_TABS",
+            fullWidth: true,
             options: [
               {
-                label: "Scroll contents",
+                label: "Scroll",
                 value: OverflowTypes.SCROLL,
               },
               {
-                label: "Truncate text",
+                label: "Truncate",
                 value: OverflowTypes.TRUNCATE,
               },
               {
-                label: "No overflow",
+                label: "None",
                 value: OverflowTypes.NONE,
               },
             ],
@@ -70,7 +219,7 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
           },
           {
             propertyName: "animateLoading",
-            label: "Animate Loading",
+            label: "Animate loading",
             controlType: "SWITCH",
             helpText: "Controls the loading of the widget",
             defaultValue: true,
@@ -82,7 +231,7 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
           {
             propertyName: "disableLink",
             helpText: "Controls parsing text as Link",
-            label: "Disable Link",
+            label: "Disable link",
             controlType: "SWITCH",
             isJSConvertible: true,
             isBindProperty: true,
@@ -91,128 +240,26 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
           },
         ],
       },
+    ];
+  }
+
+  static getStylesheetConfig(): Stylesheet {
+    return {
+      truncateButtonColor: "{{appsmith.theme.colors.primaryColor}}",
+      fontFamily: "{{appsmith.theme.fontFamily.appFont}}",
+      borderRadius: "{{appsmith.theme.borderRadius.appBorderRadius}}",
+    };
+  }
+
+  static getPropertyPaneStyleConfig() {
+    return [
       {
-        sectionName: "Styles",
+        sectionName: "General",
         children: [
           {
-            propertyName: "backgroundColor",
-            label: "Cell Background Color",
-            controlType: "COLOR_PICKER",
-            isJSConvertible: true,
-            isBindProperty: true,
-            isTriggerProperty: false,
-            validation: {
-              type: ValidationTypes.TEXT,
-              params: {
-                regex: /^((?![<|{{]).+){0,1}/,
-                expected: {
-                  type: "string (HTML color name or HEX value)",
-                  example: `red | #9C0D38`,
-                  autocompleteDataType: AutocompleteDataType.STRING,
-                },
-              },
-            },
-          },
-          {
-            propertyName: "textColor",
-            label: "Text Color",
-            controlType: "COLOR_PICKER",
-            isJSConvertible: true,
-            isBindProperty: true,
-            isTriggerProperty: false,
-            validation: {
-              type: ValidationTypes.TEXT,
-              params: {
-                regex: /^(?![<|{{]).+/,
-              },
-            },
-          },
-          {
-            propertyName: "truncateButtonColor",
-            label: "Truncate Button Color",
-            controlType: "COLOR_PICKER",
-            isJSConvertible: true,
-            isBindProperty: true,
-            isTriggerProperty: false,
-            validation: {
-              type: ValidationTypes.TEXT,
-              params: {
-                regex: /^(?![<|{{]).+/,
-              },
-            },
-            dependencies: ["overflow"],
-            hidden: (props: TextWidgetProps) => {
-              return props.overflow !== OverflowTypes.TRUNCATE;
-            },
-          },
-          {
-            helpText: "Use a html color name, HEX, RGB or RGBA value",
-            placeholderText: "#FFFFFF / Gray / rgb(255, 99, 71)",
-            propertyName: "borderColor",
-            label: "Border Color",
-            controlType: "COLOR_PICKER",
-            isBindProperty: true,
-            isTriggerProperty: false,
-            validation: { type: ValidationTypes.TEXT },
-          },
-          {
-            helpText:
-              "Enter value for border width which can also use as margin",
-            propertyName: "borderWidth",
-            label: "Border Width",
-            placeholderText: "Enter value in px",
-            controlType: "INPUT_TEXT",
-            isBindProperty: true,
-            isTriggerProperty: false,
-            validation: { type: ValidationTypes.NUMBER },
-          },
-          {
-            propertyName: "fontSize",
-            label: "Text Size",
-            controlType: "DROP_DOWN",
-            defaultValue: "1rem",
-            options: [
-              {
-                label: "S",
-                value: "0.875rem",
-                subText: "0.875rem",
-              },
-              {
-                label: "M",
-                value: "1rem",
-                subText: "1rem",
-              },
-              {
-                label: "L",
-                value: "1.25rem",
-                subText: "1.25rem",
-              },
-              {
-                label: "XL",
-                value: "1.875rem",
-                subText: "1.875rem",
-              },
-              {
-                label: "XXL",
-                value: "3rem",
-                subText: "3rem",
-              },
-              {
-                label: "3XL",
-                value: "3.75rem",
-                subText: "3.75rem",
-              },
-            ],
-            isJSConvertible: true,
-            isBindProperty: true,
-            isTriggerProperty: false,
-            validation: {
-              type: ValidationTypes.TEXT,
-            },
-          },
-          {
             propertyName: "fontFamily",
-            label: "Font Family",
+            label: "Font family",
+            helpText: "Controls the font family being used",
             controlType: "DROP_DOWN",
             options: [
               {
@@ -265,39 +312,141 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
             },
           },
           {
-            propertyName: "fontStyle",
-            label: "Font Style",
-            controlType: "BUTTON_TABS",
+            propertyName: "fontSize",
+            label: "Font size",
+            helpText: "Controls the size of the font used",
+            controlType: "DROP_DOWN",
+            defaultValue: "1rem",
             options: [
               {
-                icon: "BOLD_FONT",
-                value: "BOLD",
+                label: "S",
+                value: "0.875rem",
+                subText: "0.875rem",
               },
               {
-                icon: "ITALICS_FONT",
-                value: "ITALIC",
+                label: "M",
+                value: "1rem",
+                subText: "1rem",
+              },
+              {
+                label: "L",
+                value: "1.25rem",
+                subText: "1.25rem",
+              },
+              {
+                label: "XL",
+                value: "1.875rem",
+                subText: "1.875rem",
+              },
+              {
+                label: "XXL",
+                value: "3rem",
+                subText: "3rem",
+              },
+              {
+                label: "3XL",
+                value: "3.75rem",
+                subText: "3.75rem",
               },
             ],
             isJSConvertible: true,
             isBindProperty: true,
             isTriggerProperty: false,
+            validation: {
+              type: ValidationTypes.TEXT,
+            },
+          },
+        ],
+      },
+      {
+        sectionName: "Color",
+        children: [
+          {
+            propertyName: "textColor",
+            label: "Text color",
+            helpText: "Controls the color of the text displayed",
+            controlType: "COLOR_PICKER",
+            isJSConvertible: true,
+            isBindProperty: true,
+            isTriggerProperty: false,
+            validation: {
+              type: ValidationTypes.TEXT,
+              params: {
+                regex: /^(?![<|{{]).+/,
+              },
+            },
+          },
+          {
+            propertyName: "backgroundColor",
+            label: "Background color",
+            helpText: "Background color of the text added",
+            controlType: "COLOR_PICKER",
+            isJSConvertible: true,
+            isBindProperty: true,
+            isTriggerProperty: false,
+            validation: {
+              type: ValidationTypes.TEXT,
+              params: {
+                regex: /^((?![<|{{]).+){0,1}/,
+                expected: {
+                  type: "string (HTML color name or HEX value)",
+                  example: `red | #9C0D38`,
+                  autocompleteDataType: AutocompleteDataType.STRING,
+                },
+              },
+            },
+          },
+          {
+            helpText: "Use a html color name, HEX, RGB or RGBA value",
+            placeholderText: "#FFFFFF / Gray / rgb(255, 99, 71)",
+            propertyName: "borderColor",
+            label: "Border color",
+            controlType: "COLOR_PICKER",
+            isBindProperty: true,
+            isTriggerProperty: false,
             validation: { type: ValidationTypes.TEXT },
           },
           {
+            propertyName: "truncateButtonColor",
+            label: "Truncate button color",
+            helpText: "Controls the color of the truncate button",
+            controlType: "COLOR_PICKER",
+            isJSConvertible: true,
+            isBindProperty: true,
+            isTriggerProperty: false,
+            validation: {
+              type: ValidationTypes.TEXT,
+              params: {
+                regex: /^((?![<|{{]).+){0,1}/,
+              },
+            },
+            dependencies: ["overflow"],
+            hidden: (props: TextWidgetProps) => {
+              return props.overflow !== OverflowTypes.TRUNCATE;
+            },
+          },
+        ],
+      },
+      {
+        sectionName: "Text formatting",
+        children: [
+          {
             propertyName: "textAlign",
-            label: "Text Align",
+            label: "Alignment",
+            helpText: "Controls the horizontal alignment of the text",
             controlType: "ICON_TABS",
+            fullWidth: true,
             options: [
               {
-                icon: "LEFT_ALIGN",
+                startIcon: "align-left",
                 value: "LEFT",
               },
               {
-                icon: "CENTER_ALIGN",
+                startIcon: "align-center",
                 value: "CENTER",
               },
               {
-                icon: "RIGHT_ALIGN",
+                startIcon: "align-right",
                 value: "RIGHT",
               },
             ],
@@ -306,6 +455,42 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
             isBindProperty: true,
             isTriggerProperty: false,
             validation: { type: ValidationTypes.TEXT },
+          },
+          {
+            propertyName: "fontStyle",
+            label: "Emphasis",
+            helpText: "Controls the font emphasis of the text displayed",
+            controlType: "BUTTON_GROUP",
+            options: [
+              {
+                icon: "text-bold",
+                value: "BOLD",
+              },
+              {
+                icon: "text-italic",
+                value: "ITALIC",
+              },
+            ],
+            isJSConvertible: true,
+            isBindProperty: true,
+            isTriggerProperty: false,
+            validation: { type: ValidationTypes.TEXT },
+          },
+        ],
+      },
+      {
+        sectionName: "Border and shadow",
+        children: [
+          {
+            helpText:
+              "Enter value for border width which can also use as margin",
+            propertyName: "borderWidth",
+            label: "Border width",
+            placeholderText: "Enter value in px",
+            controlType: "INPUT_TEXT",
+            isBindProperty: true,
+            isTriggerProperty: false,
+            validation: { type: ValidationTypes.NUMBER },
           },
         ],
       },
@@ -318,14 +503,46 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
    */
   shouldDisableLink = (): boolean => {
     const text = this.props.text || "";
-    const count: number = countOccurrences(text, "\n", false);
-    return count === 0 && text.length > MAX_HTML_PARSING_LENGTH;
+    const count: number = countOccurrences(text, "\n", false, 0);
+
+    return (
+      (count === 0 && text.length > MAX_HTML_PARSING_LENGTH) ||
+      text.length > 50000
+    );
   };
 
-  getPageView() {
+  static getSetterConfig(): SetterConfig {
+    return {
+      __setters: {
+        setVisibility: {
+          path: "isVisible",
+          type: "boolean",
+        },
+        setDisabled: {
+          path: "isDisabled",
+          type: "boolean",
+        },
+        setRequired: {
+          path: "isRequired",
+          type: "boolean",
+        },
+        setText: {
+          path: "text",
+          type: "string",
+        },
+        setTextColor: {
+          path: "textColor",
+          type: "string",
+        },
+      },
+    };
+  }
+
+  getWidgetView() {
     const disableLink: boolean = this.props.disableLink
       ? true
       : this.shouldDisableLink();
+
     return (
       <WidgetStyleContainer
         className="t--text-widget-container"
@@ -337,22 +554,22 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
         ])}
       >
         <TextComponent
+          accentColor={this.props.accentColor}
           backgroundColor={this.props.backgroundColor}
-          bottomRow={this.props.bottomRow}
           disableLink={disableLink}
           fontFamily={this.props.fontFamily}
           fontSize={this.props.fontSize}
           fontStyle={this.props.fontStyle}
           isLoading={this.props.isLoading}
           key={this.props.widgetId}
-          leftColumn={this.props.leftColumn}
+          minHeight={this.props.minHeight}
           overflow={this.props.overflow}
-          rightColumn={this.props.rightColumn}
           text={this.props.text}
           textAlign={this.props.textAlign ? this.props.textAlign : "LEFT"}
           textColor={this.props.textColor}
-          topRow={this.props.topRow}
-          truncateButtonColor={this.props.truncateButtonColor}
+          truncateButtonColor={
+            this.props.truncateButtonColor || this.props.accentColor
+          }
           widgetId={this.props.widgetId}
         />
       </WidgetStyleContainer>
@@ -365,8 +582,14 @@ class TextWidget extends BaseWidget<TextWidgetProps, WidgetState> {
     };
   }
 
-  static getWidgetType() {
-    return "TEXT_WIDGET";
+  static getAutocompleteDefinitions(): AutocompletionDefinitions {
+    return {
+      "!doc":
+        "‌Text widget is used to display textual information. Whether you want to display a paragraph or information or add a heading to a container, a text widget makes it easy to style and display text",
+      "!url": "https://docs.appsmith.com/widget-reference/text",
+      isVisible: DefaultAutocompleteDefinitions.isVisible,
+      text: "string",
+    };
   }
 }
 
@@ -381,6 +604,7 @@ export interface TextStyles {
 }
 
 export interface TextWidgetProps extends WidgetProps, TextStyles {
+  accentColor: string;
   text?: string;
   isLoading: boolean;
   disableLink: boolean;

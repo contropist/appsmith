@@ -1,19 +1,20 @@
-import { selectMultipleWidgetsAction } from "actions/widgetSelectionActions";
-import { OccupiedSpace } from "constants/CanvasEditorConstants";
-import {
-  ReduxAction,
-  ReduxActionTypes,
-} from "@appsmith/constants/ReduxActionConstants";
+import { selectWidgetInitAction } from "actions/widgetSelectionActions";
+import type { OccupiedSpace } from "constants/CanvasEditorConstants";
+import type { ReduxAction } from "actions/ReduxActionTypes";
+import { ReduxActionTypes } from "ee/constants/ReduxActionConstants";
 import { MAIN_CONTAINER_WIDGET_ID } from "constants/WidgetConstants";
-import { isEqual } from "lodash";
-import { SelectedArenaDimensions } from "pages/common/CanvasArenas/CanvasSelectionArena";
+import equal from "fast-deep-equal/es6";
+import type { Task } from "redux-saga";
 import { all, cancel, put, select, take, takeLatest } from "redux-saga/effects";
 import { getOccupiedSpaces } from "selectors/editorSelectors";
 import { getSelectedWidgets } from "selectors/ui";
 import { snapToGrid } from "utils/helpers";
-import { areIntersecting } from "utils/WidgetPropsUtils";
-import { WidgetProps } from "widgets/BaseWidget";
-import { getWidget } from "sagas/selectors";
+import { areIntersecting } from "utils/boxHelpers";
+import type { WidgetProps } from "widgets/BaseWidget";
+import { getWidgets } from "sagas/selectors";
+import type { CanvasWidgetsReduxState } from "reducers/entityReducers/canvasWidgetsReducer";
+import { SelectionRequestType } from "sagas/WidgetSelectUtils";
+import type { SelectedArenaDimensions } from "layoutSystems/fixedlayout/editor/FixedLayoutCanvasArenas/CanvasSelectionArena";
 
 interface StartingSelectionState {
   lastSelectedWidgets: string[];
@@ -24,15 +25,15 @@ interface StartingSelectionState {
       }
     | undefined;
 }
+
 function* selectAllWidgetsInAreaSaga(
   StartingSelectionState: StartingSelectionState,
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: ReduxAction<any>,
 ) {
-  const {
-    lastSelectedWidgets,
-    mainContainer,
-    widgetOccupiedSpaces,
-  } = StartingSelectionState;
+  const { lastSelectedWidgets, mainContainer, widgetOccupiedSpaces } =
+    StartingSelectionState;
   const {
     isMultiSelect,
     selectionArena,
@@ -96,8 +97,13 @@ function* selectAllWidgetsInAreaSaga(
       : widgetIdsToSelect;
     const currentSelectedWidgets: string[] = yield select(getSelectedWidgets);
 
-    if (!isEqual(filteredWidgetsToSelect, currentSelectedWidgets)) {
-      yield put(selectMultipleWidgetsAction(filteredWidgetsToSelect));
+    if (!equal(filteredWidgetsToSelect, currentSelectedWidgets)) {
+      yield put(
+        selectWidgetInitAction(
+          SelectionRequestType.Multiple,
+          filteredWidgetsToSelect,
+        ),
+      );
     }
   }
 }
@@ -107,16 +113,24 @@ function* startCanvasSelectionSaga(
 ) {
   const lastSelectedWidgets: string[] = yield select(getSelectedWidgets);
   const widgetId = actionPayload.payload.widgetId || MAIN_CONTAINER_WIDGET_ID;
-  const mainContainer: WidgetProps = yield select(getWidget, widgetId);
+  const canvasWidgets: CanvasWidgetsReduxState = yield select(getWidgets);
+  const mainContainer: WidgetProps = canvasWidgets[widgetId];
+
+  //filter out the parent container and keep only the widgets that are on `widgetId`'s canvas
   const lastSelectedWidgetsWithoutParent = lastSelectedWidgets.filter(
-    (each) => mainContainer && each !== mainContainer.parentId,
+    (each) =>
+      mainContainer &&
+      each !== mainContainer.parentId &&
+      canvasWidgets[each] &&
+      canvasWidgets[each].parentId === widgetId,
   );
+
   const widgetOccupiedSpaces:
     | {
         [containerWidgetId: string]: OccupiedSpace[];
       }
     | undefined = yield select(getOccupiedSpaces);
-  const selectionTask = yield takeLatest(
+  const selectionTask: Task = yield takeLatest(
     ReduxActionTypes.SELECT_WIDGETS_IN_AREA,
     selectAllWidgetsInAreaSaga,
     {
@@ -125,6 +139,7 @@ function* startCanvasSelectionSaga(
       widgetOccupiedSpaces,
     },
   );
+
   yield take(ReduxActionTypes.STOP_CANVAS_SELECTION);
   yield cancel(selectionTask);
 }

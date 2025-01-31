@@ -1,68 +1,147 @@
-import React from "react";
+import React, { useRef } from "react";
 import FormControl from "pages/Editor/FormControl";
 import styled from "styled-components";
-import { ControlProps } from "./BaseControl";
-import { Colors } from "constants/Colors";
-import Icon, { IconSize } from "components/ads/Icon";
+import type { ControlProps, FormConfigType } from "./BaseControl";
 import { allowedControlTypes } from "components/formControls/utils";
+import useResponsiveBreakpoints from "utils/hooks/useResponsiveBreakpoints";
+import { Colors } from "constants/Colors";
 
-const dropDownFieldConfig: any = {
+const dropDownFieldConfig: Partial<FormConfigType> = {
   label: "",
   controlType: "DROP_DOWN",
-  fetchOptionsCondtionally: true,
+  fetchOptionsConditionally: true,
   options: [],
+  customStyles: {
+    width: "270px",
+  },
 };
 
-const inputFieldConfig: any = {
+const inputFieldConfig: Partial<FormConfigType> = {
   label: "",
   controlType: "QUERY_DYNAMIC_INPUT_TEXT",
+  customStyles: {
+    width: "270px",
+  },
 };
-
-// Component for the icons
-const CenteredIcon = styled(Icon)<{ noMarginLeft?: boolean }>`
-  margin: 13px;
-  align-self: end;
-  &.hide {
-    opacity: 0;
-    pointer-events: none;
-  }
-  color: ${Colors.GREY_7};
-`;
 
 // main container for the entity selector component
 const EntitySelectorContainer = styled.div`
-  display: flex;
-  flex-direction: row;
-  width: min-content;
-  justify-content: space-between;
+  display: grid;
+  grid-gap: 5px;
+  grid-template-columns: repeat(auto-fill, 270px);
 `;
 
+const EntitySelectorWrapper = styled.div<{
+  marginRight: string;
+  index: number;
+  size: string;
+}>`
+  margin-right: ${(props) => props.marginRight};
+  position: relative;
+
+  /* Tree like lines in small width containers
+    |
+    |___ 
+    |
+    |___
+  */
+  ${(props) =>
+    props.size === "small" &&
+    props.index !== 0 &&
+    `
+    padding-left: 14px;
+    /* 
+    We create a rectangular shape before the EntitySelector and color the bottom and left
+    borders. The :before creates the lines from the EntitySelector to the top
+    |    ________________
+    |___| EntitySelector |         
+        |________________|
+    */
+    :before {
+      content: "";
+      display: block;
+      position: absolute;
+      width: 10px;
+      left: 4px;
+      border: solid ${Colors.ALTO2};
+      border-width: 0 0 1.8px 1.8px;
+      // 50% as in vertically central, 30.2 = 16(grid gap) * 2 - 1.8(border-wdith)
+      height: calc(50% + 30.2px); 
+      top: -16px;
+    }
+    /* 
+    The :after creates the lines to connect with the component below
+         ________________
+     ___| EntitySelector |         
+    |   |________________|
+    |
+    */
+    :after {
+      content: "";
+      display: block;
+      position: absolute;
+      width: 10px;
+      left: 4px;
+      bottom: 0px;
+      border: solid ${Colors.ALTO2};
+      border-width: 0 0 0 1.8px;
+      height: calc(50%);
+    }
+    /* 
+    For the last element in the list we want to hide the lines directed below
+    |    ________________
+    |___| EntitySelector |         
+    |   |________________|
+    |    ________________
+    |___| EntitySelector |         
+        |________________|
+    */
+    :last-child:after {
+      border-width: 0px;
+    }
+  `}
+`;
+
+// TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function EntitySelectorComponent(props: any) {
   const { configProperty, schema } = props;
+  const targetRef = useRef<HTMLDivElement>(null);
+  // Specify the breakpoint value with an identifier.
+  // Here 576 => 280 * 2. Where 280 is the width of a single EntitySelectorComponent
+  const size = useResponsiveBreakpoints(targetRef, [{ small: 576 }]);
 
-  const maxWidthOfComponents = 45;
-  let width = 15;
-  if (schema.length > 0) {
-    width = maxWidthOfComponents / schema.length;
-  }
-  const customStyles = {
-    width: `${width}vw`,
-  };
+  const visibleSchemas = schema.filter(
+    // TODO: Fix this the next time the file is edited
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (singleSchema: any) => !singleSchema.hidden,
+  );
 
   return (
-    <EntitySelectorContainer key={`ES_${configProperty}`}>
-      {schema &&
-        schema.length > 0 &&
-        schema.map((singleSchema: any, index: number) => {
+    <EntitySelectorContainer
+      className={`t--${configProperty}`}
+      key={`ES_${configProperty}`}
+      ref={targetRef}
+    >
+      {visibleSchemas &&
+        visibleSchemas.length > 0 &&
+        // TODO: Fix this the next time the file is edited
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        visibleSchemas.map((singleSchema: any, index: number) => {
           return (
-            allowedControlTypes.includes(singleSchema.controlType) && (
-              <React.Fragment key={`ES_FRAG_${singleSchema.configProperty}`}>
+            allowedControlTypes.includes(singleSchema.controlType) &&
+            !singleSchema.hidden && (
+              <EntitySelectorWrapper
+                index={index}
+                key={`ES_FRAG_${singleSchema.configProperty}`}
+                marginRight={index + 1 === visibleSchemas.length ? "" : "1rem"}
+                size={size}
+              >
                 {singleSchema.controlType === "DROP_DOWN" ? (
                   <FormControl
                     config={{
                       ...dropDownFieldConfig,
                       ...singleSchema,
-                      customStyles,
                       key: `ES_${singleSchema.configProperty}`,
                     }}
                     formName={props.formName}
@@ -72,20 +151,12 @@ function EntitySelectorComponent(props: any) {
                     config={{
                       ...inputFieldConfig,
                       ...singleSchema,
-                      customStyles,
                       key: `ES_${singleSchema.configProperty}`,
                     }}
                     formName={props.formName}
                   />
                 )}
-                {index < schema.length - 1 && (
-                  <CenteredIcon
-                    key={`ES_ICON_${configProperty}`}
-                    name="double-arrow-right"
-                    size={IconSize.SMALL}
-                  />
-                )}
-              </React.Fragment>
+              </EntitySelectorWrapper>
             )
           );
         })}

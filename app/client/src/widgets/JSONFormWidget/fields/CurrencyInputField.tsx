@@ -1,26 +1,20 @@
 import * as Sentry from "@sentry/react";
-import _ from "lodash";
-import moment from "moment";
 import React, { useCallback, useContext, useMemo, useState } from "react";
 
-import BaseInputField, {
-  BaseInputComponentProps,
-  parseRegex,
-} from "./BaseInputField";
+import type { BaseInputComponentProps } from "./BaseInputField";
+import BaseInputField, { parseRegex } from "./BaseInputField";
 import CurrencyTypeDropdown, {
   CurrencyDropdownOptions,
   getDefaultCurrency,
 } from "widgets/CurrencyInputWidget/component/CurrencyCodeDropdown";
 import FormContext from "../FormContext";
-import { BaseFieldComponentProps } from "../constants";
+import type { BaseFieldComponentProps } from "../constants";
 import { RenderModes } from "constants/WidgetConstants";
-import {
-  getLocaleDecimalSeperator,
-  limitDecimalValue,
-} from "widgets/CurrencyInputWidget/component/utilities";
+import { limitDecimalValue } from "widgets/CurrencyInputWidget/component/utilities";
 import derived from "widgets/CurrencyInputWidget/widget/derived";
 import { isEmpty } from "../helper";
 import { BASE_LABEL_TEXT_SIZE } from "../component/FieldLabel";
+import { getLocaleDecimalSeperator } from "widgets/WidgetUtils";
 
 type CurrencyInputComponentProps = BaseInputComponentProps & {
   currencyCountryCode: string;
@@ -28,11 +22,10 @@ type CurrencyInputComponentProps = BaseInputComponentProps & {
   decimalsInCurrency: number;
 };
 
-export type CurrencyInputFieldProps = BaseFieldComponentProps<
-  CurrencyInputComponentProps
->;
+export type CurrencyInputFieldProps =
+  BaseFieldComponentProps<CurrencyInputComponentProps>;
 
-type CurrencyTypeDropdownComponentProps = {
+interface CurrencyTypeDropdownComponentProps {
   allowCurrencyChange?: boolean;
   borderRadius?: string;
   currencyCountryCode: string;
@@ -40,7 +33,7 @@ type CurrencyTypeDropdownComponentProps = {
   accentColor?: string;
   propertyPath: string;
   fieldName: string;
-};
+}
 
 const COMPONENT_DEFAULT_VALUES: CurrencyInputComponentProps = {
   currencyCountryCode: getDefaultCurrency().currency,
@@ -58,6 +51,7 @@ export const isValid = (
   inputValue?: string | null,
 ) => {
   let hasValidValue, value;
+
   try {
     value = Number(inputValue);
     hasValidValue = !isEmpty(inputValue) && Number.isFinite(value);
@@ -92,9 +86,8 @@ function CurrencyTypeDropdownComponent({
   propertyPath,
 }: CurrencyTypeDropdownComponentProps) {
   const { renderMode, updateWidgetProperty } = useContext(FormContext);
-  const [metaCurrencyCountryCode, setMetaCurrencyCountryCode] = useState<
-    string
-  >();
+  const [metaCurrencyCountryCode, setMetaCurrencyCountryCode] =
+    useState<string>();
   const onCurrencyTypeChange = (code?: string) => {
     if (renderMode === RenderModes.CANVAS) {
       updateWidgetProperty?.(`${propertyPath}.currencyCountryCode`, code);
@@ -130,6 +123,7 @@ function CurrencyInputField({
     (inputValue: string) => {
       let text = "";
       const decimalSeperator = getLocaleDecimalSeperator();
+
       try {
         if (inputValue && inputValue.includes(decimalSeperator)) {
           text = limitDecimalValue(schemaItem.decimalsInCurrency, inputValue);
@@ -141,7 +135,7 @@ function CurrencyInputField({
         Sentry.captureException(e);
       }
 
-      const value = derived.value({ text }, moment, _);
+      const value = derived.value({ text });
 
       return {
         text,

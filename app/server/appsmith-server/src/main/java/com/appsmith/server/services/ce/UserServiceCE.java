@@ -1,25 +1,25 @@
 package com.appsmith.server.services.ce;
 
-import com.appsmith.server.domains.InviteUser;
-import com.appsmith.server.domains.Organization;
+import com.appsmith.server.acl.AclPermission;
 import com.appsmith.server.domains.User;
-import com.appsmith.server.dtos.InviteUsersDTO;
+import com.appsmith.server.dtos.ResendEmailVerificationDTO;
 import com.appsmith.server.dtos.ResetUserPasswordDTO;
 import com.appsmith.server.dtos.UserProfileDTO;
 import com.appsmith.server.dtos.UserSignupDTO;
 import com.appsmith.server.dtos.UserUpdateDTO;
 import com.appsmith.server.services.CrudService;
+import org.springframework.data.mongodb.core.query.UpdateDefinition;
 import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 public interface UserServiceCE extends CrudService<User, String> {
 
     Mono<User> findByEmail(String email);
 
-    Mono<User> switchCurrentOrganization(String orgId);
+    Mono<User> findByEmailAndTenantId(String email, String tenantId);
 
     Mono<Boolean> forgotPasswordTokenGenerate(ResetUserPasswordDTO resetUserPasswordDTO);
 
@@ -27,19 +27,25 @@ public interface UserServiceCE extends CrudService<User, String> {
 
     Mono<Boolean> resetPasswordAfterForgotPassword(String token, User user);
 
-    Mono<User> inviteUserToApplication(InviteUser inviteUser, String originHeader, String applicationId);
-
-    Mono<UserSignupDTO> createUserAndSendEmail(User user, String originHeader);
+    Mono<UserSignupDTO> createUser(User user);
 
     Mono<User> userCreate(User user, boolean isAdminUser);
 
-    Mono<List<User>> inviteUsers(InviteUsersDTO inviteUsersDTO, String originHeader);
+    Mono<Integer> updateWithoutPermission(String id, UpdateDefinition updateObj);
 
     Mono<User> updateCurrentUser(UserUpdateDTO updates, ServerWebExchange exchange);
-
-    Map<String, String> getEmailParams(Organization organization, User inviterUser, String inviteUrl, boolean isNewUser);
 
     Mono<Boolean> isUsersEmpty();
 
     Mono<UserProfileDTO> buildUserProfileDTO(User user);
+
+    Flux<User> getAllByEmails(Set<String> emails, AclPermission permission);
+
+    Mono<User> signupIfAllowed(User user);
+
+    Mono<User> updateWithoutPermission(String id, User update);
+
+    Mono<Boolean> resendEmailVerification(ResendEmailVerificationDTO resendEmailVerificationDTO, String redirectUrl);
+
+    Mono<Void> verifyEmailVerificationToken(ServerWebExchange exchange);
 }

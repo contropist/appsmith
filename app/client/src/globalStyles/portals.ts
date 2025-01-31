@@ -2,8 +2,8 @@ import { createGlobalStyle } from "styled-components";
 import { Layers } from "constants/Layers";
 import { Classes } from "@blueprintjs/core";
 import { Classes as GitSyncClasses } from "pages/Editor/gitSync/constants";
-import { Classes as GuidedTourClasses } from "pages/Editor/GuidedTour/constants";
 import { Colors } from "constants/Colors";
+import { GuidedTourClasses } from "components/utils/Indicator";
 
 export const replayHighlightClass = "ur--has-border";
 
@@ -12,13 +12,7 @@ export const PortalStyles = createGlobalStyle`
     position: relative;
     z-index: ${Layers.header};
   }
-  
-  #tooltip-root {
-    position: absolute;
-    top: 0;
-    width: 100%;
-    z-index: ${Layers.max};
-  }
+
 
   .bp3-portal {
     z-index: ${Layers.portals};
@@ -26,10 +20,6 @@ export const PortalStyles = createGlobalStyle`
 
   .file-picker-dialog.bp3-dialog .${Classes.DIALOG_BODY} {
     padding: 0;
-  }
-
-  .bp3-portal.inline-comment-thread {
-    z-index: ${Layers.appComments};
   }
 
   .${GitSyncClasses.MERGE_DROPDOWN} .ads-dropdown-options-wrapper {
@@ -47,24 +37,24 @@ export const PortalStyles = createGlobalStyle`
 
   .${GuidedTourClasses.GUIDED_TOUR_BORDER} {
     position:fixed;
-    border: 4px solid rgba(191, 65, 9, 0);
-    border-radius: 4px;
+    border: 4px solid transparent;
+    border-radius: var(--ads-v2-border-radius);
     filter: drop-shadow(0px 1px 3px rgba(16, 24, 40, 0.1)) drop-shadow(0px 1px 2px rgba(16, 24, 40, 0.06));
     transition: all 1s;
-    z-index: 3;
+    z-index: ${Layers.guidedTour};
     pointer-events: none;
   }
 
   .${GuidedTourClasses.GUIDED_TOUR_SHOW_BORDER} {
-    border-color: rgba(191, 65, 9, 1);
+    border-color: var(--ads-v2-color-border-brand-emphasis-plus);
   }
-  
+
   .${GuidedTourClasses.GUIDED_TOUR_INDICATOR} {
     position: fixed;
-    z-index: 3;
+    z-index: ${Layers.guidedTour};
     pointer-events: none;
-    height: 87px;
-    width: 116px;
+    height: 50px;
+    width: 90px;
     transition: all 1s;
   }
 `;

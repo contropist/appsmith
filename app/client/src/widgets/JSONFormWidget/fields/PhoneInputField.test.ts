@@ -1,5 +1,6 @@
 import { FieldType } from "../constants";
-import { InputFieldProps, isValid } from "./InputField";
+import type { PhoneInputFieldProps } from "./PhoneInputField";
+import { isValid } from "./PhoneInputField";
 
 describe("Phone Input Field", () => {
   it("return validity when not required", () => {
@@ -18,10 +19,11 @@ describe("Phone Input Field", () => {
     const schemaItem = {
       isRequired: false,
       fieldType: FieldType.TEXT_INPUT,
-    } as InputFieldProps["schemaItem"];
+    } as PhoneInputFieldProps["schemaItem"];
 
     inputs.forEach((input) => {
       const result = isValid(schemaItem, input.value);
+
       expect(result).toEqual(input.expectedOutput);
     });
   });
@@ -42,10 +44,11 @@ describe("Phone Input Field", () => {
     const schemaItem = {
       isRequired: true,
       fieldType: FieldType.TEXT_INPUT,
-    } as InputFieldProps["schemaItem"];
+    } as PhoneInputFieldProps["schemaItem"];
 
     inputs.forEach((input) => {
       const result = isValid(schemaItem, input.value);
+
       expect(result).toEqual(input.expectedOutput);
     });
   });
@@ -66,10 +69,11 @@ describe("Phone Input Field", () => {
     const schemaItem = {
       validation: true,
       fieldType: FieldType.TEXT_INPUT,
-    } as InputFieldProps["schemaItem"];
+    } as PhoneInputFieldProps["schemaItem"];
 
     inputs.forEach((input) => {
       const result = isValid(schemaItem, input.value);
+
       expect(result).toEqual(input.expectedOutput);
     });
   });
@@ -90,10 +94,11 @@ describe("Phone Input Field", () => {
     const schemaItem = {
       validation: false,
       fieldType: FieldType.TEXT_INPUT,
-    } as InputFieldProps["schemaItem"];
+    } as PhoneInputFieldProps["schemaItem"];
 
     inputs.forEach((input) => {
       const result = isValid(schemaItem, input.value);
+
       expect(result).toEqual(input.expectedOutput);
     });
   });
@@ -115,10 +120,11 @@ describe("Phone Input Field", () => {
       validation: false,
       isRequired: true,
       fieldType: FieldType.TEXT_INPUT,
-    } as InputFieldProps["schemaItem"];
+    } as PhoneInputFieldProps["schemaItem"];
 
     inputs.forEach((input) => {
       const result = isValid(schemaItem, input.value);
+
       expect(result).toEqual(input.expectedOutput);
     });
   });
