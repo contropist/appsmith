@@ -1,163 +1,611 @@
-import { ObjectsRegistry } from "../Objects/Registry"
+import { ObjectsRegistry } from "../Objects/Registry";
+import EditorNavigation, {
+  AppSidebar,
+  AppSidebarButton,
+  PageLeftPane,
+  PagePaneSegment,
+} from "./EditorNavigation";
+import * as _ from "../Objects/ObjectsCore";
+import ApiEditor from "../../locators/ApiEditor";
+import { PluginActionForm } from "./PluginActionForm";
+import BottomTabs from "./IDE/BottomTabs";
+import PageList from "./PageList";
+import FileTabs from "./IDE/FileTabs";
+
+type RightPaneTabs = "datasources" | "connections";
+
 export class ApiPage {
-    public agHelper = ObjectsRegistry.AggregateHelper
-    public locator = ObjectsRegistry.CommonLocators;
+  public agHelper = ObjectsRegistry.AggregateHelper;
+  public locator = ObjectsRegistry.CommonLocators;
+  private assertHelper = ObjectsRegistry.AssertHelper;
+  private pluginActionForm = new PluginActionForm();
 
-    private _createapi = ".t--createBlankApiCard"
-    private _resourceUrl = ".t--dataSourceField"
-    private _headerKey = (index: number) => ".t--actionConfiguration\\.headers\\[0\\]\\.key\\." + index + ""
-    private _headerValue = (index: number) => ".t--actionConfiguration\\.headers\\[0\\]\\.value\\." + index + ""
-    private _paramKey = (index: number) => ".t--actionConfiguration\\.queryParameters\\[0\\]\\.key\\." + index + ""
-    private _paramValue = (index: number) => ".t--actionConfiguration\\.queryParameters\\[0\\]\\.value\\." + index + ""
-    _bodyKey = (index: number) => ".t--actionConfiguration\\.bodyFormData\\[0\\]\\.key\\." + index + ""
-    _bodyValue = (index: number) => ".t--actionConfiguration\\.bodyFormData\\[0\\]\\.value\\." + index + ""
-    _bodyTypeDropdown = "//span[text()='Type'][@class='bp3-button-text']/parent::button"
-    private _apiRunBtn = ".t--apiFormRunBtn"
-    private _queryTimeout = "//input[@name='actionConfiguration.timeoutInMillisecond']"
-    _responseBody = ".CodeMirror-code  span.cm-string.cm-property"
-    private _blankAPI = "span:contains('New Blank API')"
-    private _apiVerbDropdown = ".t--apiFormHttpMethod"
-    private _verbToSelect = (verb: string) => "//div[contains(@class, 't--dropdown-option')]//span[contains(text(),'" + verb + "')]"
-    private _bodySubTab = (subTab: string) => `[data-cy='tab--${subTab}']`
-    _visibleTextSpan = (spanText: string) => "//span[text()='" + spanText + "']"
-    _visibleTextDiv = (divText: string) => "//div[text()='" + divText + "']"
-    _noBodyMessageDiv = "#NoBodyMessageDiv"
-    _noBodyMessage = "This request does not have a body"
-    _imageSrc = "//img/parent::div"
-    private _trashDelete = "span[name='delete']"
-    private _onPageLoad = "input[name='executeOnLoad'][type='checkbox']"
+  // private datasources = ObjectsRegistry.DataSources;
 
+  _createapi = ".t--createBlankApiCard";
+  private _headerKey = (index: number) =>
+    ".t--actionConfiguration\\.headers\\[" +
+    index +
+    "\\]\\.key\\." +
+    index +
+    "";
+  private _headerValue = (index: number) =>
+    ".t--actionConfiguration\\.headers\\[" +
+    index +
+    "\\]\\.value\\." +
+    index +
+    "";
+  private _paramKey = (index: number) =>
+    ".t--actionConfiguration\\.queryParameters\\[" +
+    index +
+    "\\]\\.key\\." +
+    index +
+    "";
+  public _paramValue = (index: number) =>
+    ".t--actionConfiguration\\.queryParameters\\[" +
+    index +
+    "\\]\\.value\\." +
+    index +
+    "";
+  private _importedKey = (index: number, keyValueName: string) =>
+    `.t--${keyValueName}-key-${index}`;
+  private _importedValue = (index: number, keyValueName: string) =>
+    `.t--${keyValueName}-value-${index}`;
+  _bodyKey = (index: number) =>
+    ".t--actionConfiguration\\.bodyFormData\\[0\\]\\.key\\." + index + "";
+  _bodyValue = (index: number) =>
+    `.t--actionConfiguration\\.bodyFormData\\[${index}\\]\\.value\\.${index}`;
+  _bodyTypeDropdown =
+    "//span[text()='Type'][@class='rc-select-selection-placeholder']/ancestor::div";
+  _apiRunBtn = '[data-testid="t--run-action"]';
+  private _queryTimeout =
+    "//input[@name='actionConfiguration.timeoutInMillisecond']";
+  _responseBody = ".CodeMirror-code  span.cm-string.cm-property";
+  private _blankAPI = "span:contains('REST API')";
+  private _apiVerbDropdown = ".t--apiFormHttpMethod div";
+  private _verbToSelect = (verb: string) =>
+    "//div[contains(@class, 'rc-select-item-option')]//div[contains(text(),'" +
+    verb +
+    "')]";
+  private _bodyTypeSelect = `//div[@data-testid="t--api-body-tab-switch"]`;
+  private _bodyTypeToSelect = (subTab: string) =>
+    ".rc-select-item-option:contains(" + subTab + ")";
+  private _rightPaneTab = (tab: string) =>
+    "//span[contains(text(), '" + tab + "')]/parent::button";
+  _visibleTextSpan = (spanText: string) => "//span[text()='" + spanText + "']";
+  _visibleTextDiv = (divText: string) => "//div[text()='" + divText + "']";
+  _noBodyMessageDiv = "#NoBodyMessageDiv";
+  _noBodyMessage = "This request does not have a body";
+  _imageSrc = "//img/parent::div";
+  private _trashDelete = "[data-testid=t--trash-icon]";
+  private _onPageLoad = "input[name='executeOnLoad'][type='checkbox']";
+  private _confirmBeforeRunning =
+    "input[name='confirmBeforeExecute'][type='checkbox']";
+  private _paginationTypeLabels = ".t--apiFormPaginationType label";
+  _saveAsDS = ".t--store-as-datasource";
+  _responseStatus = ".t--response-status-code";
+  public _debugger = ".t--debugger-count";
 
-    CreateApi(apiName: string = "", apiVerb: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET',) {
-        cy.get(this.locator._createNew).click({ force: true });
-        cy.get(this._blankAPI).click({ force: true });
-        this.agHelper.ValidateNetworkStatus("@createNewApi", 201)
+  public _responseTabHeader = "[data-testid=t--tab-HEADERS_TAB]";
+  public _headersTabContent = ".t--headers-tab";
+  public _autoGeneratedHeaderInfoIcon = (key: string) =>
+    `.t--auto-generated-${key}-info`;
+  _nextCursorValue = ".t--apiFormPaginationNextCursorValue";
+  _fileOperation = "[data-testid='t--file-operation']";
+  _addMore = ".t--addApiHeader";
+  public _editorDS = ".t--datasource-editor";
+  public _addMoreHeaderFieldButton = ".t--addApiHeader";
+  public jsonBody = `.t--apiFormPostBody`;
+  private _entityName = ".t--entity-name";
+  private curlImport = ".t--datasoucre-create-option-new_curl_import";
+  private _curlTextArea =
+    "//label[text()='Paste CURL Code Here']/parent::form/div";
+  private runOnPageLoadJSObject =
+    "input[name^='execute-on-page-load'][type='checkbox']";
+  public settingsTriggerLocator = "[data-testid='t--js-settings-trigger']";
+  public splitPaneContextMenuTrigger = ".entity-context-menu";
+  public moreActionsTrigger = "[data-testid='t--more-action-trigger']";
+  private apiNameInput = this.locator._activeEntityTabInput;
+  public pageList = ".ads-v2-sub-menu > .ads-v2-menu__menu-item";
 
-        // cy.get("@createNewApi").then((response: any) => {
-        //     expect(response.response.body.responseMeta.success).to.eq(true);
-        //     cy.get(this.agHelper._actionName)
-        //         .click()
-        //         .invoke("text")
-        //         .then((text) => {
-        //             const someText = text;
-        //             expect(someText).to.equal(response.response.body.data.name);
-        //         });
-        // }); // to check if Api1 = Api1 when Create Api invoked
+  CreateApi(
+    apiName = "",
+    apiVerb: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" = "GET",
+    aftDSSaved = false,
+  ) {
+    if (aftDSSaved) ObjectsRegistry.DataSources.CreateQueryAfterDSSaved();
+    else {
+      AppSidebar.navigate(AppSidebarButton.Editor);
+      this.agHelper.RemoveUIElement("EvaluatedPopUp");
+      PageLeftPane.switchSegment(PagePaneSegment.Queries);
+      this.agHelper.GetHoverNClick(this.locator._createNew);
+      this.agHelper.GetNClick(this._blankAPI, 0, true);
+      this.agHelper.RemoveUIElement(
+        "Tooltip",
+        Cypress.env("MESSAGES").ADD_QUERY_JS_TOOLTIP(),
+      );
+    }
+    this.assertHelper.AssertNetworkStatus("@createNewApi", 201);
 
-        if (apiName)
-            this.agHelper.RenameWithInPane(apiName)
-        cy.get(this._resourceUrl).should("be.visible");
-        if (apiVerb != 'GET')
-            this.SelectAPIVerb(apiVerb)
+    // cy.get("@createNewApi").then((response: any) => {
+    //     expect(response.response.body.responseMeta.success).to.eq(true);
+    //     cy.get(this.agHelper._actionName)
+    //         .click()
+    //         .invoke("text")
+    //         .then((text) => {
+    //             const someText = text;
+    //             expect(someText).to.equal(response.response.body.data.name);
+    //         });
+    // }); // to check if Api1 = Api1 when Create Api invoked
+
+    if (apiName) {
+      this.agHelper.RenameQuery(apiName);
+      this.agHelper.GetNAssertContains(this._entityName, apiName);
+    }
+    this.agHelper.AssertElementVisibility(ApiEditor.dataSourceField);
+    if (apiVerb != "GET") this.SelectAPIVerb(apiVerb);
+  }
+
+  CreateAndFillApi(
+    url: string,
+    apiName = "",
+    queryTimeout = 10000,
+    apiVerb: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" = "GET",
+    aftDSSaved = false,
+    toVerifySave = true,
+  ) {
+    this.CreateApi(apiName, apiVerb, aftDSSaved);
+    this.EnterURL(url, "", toVerifySave);
+    this.assertHelper.AssertNetworkStatus("@saveAction", 200);
+    this.AssertRunButtonDisability();
+    if (queryTimeout != 10000) this.SetAPITimeout(queryTimeout, toVerifySave);
+  }
+
+  AssertRunButtonDisability(disabled = false) {
+    this.agHelper.AssertElementEnabledDisabled(this._apiRunBtn, 0, disabled);
+  }
+
+  EnterURL(url: string, evaluatedValue = "", toVerifySave = true) {
+    this.agHelper.EnterValue(
+      url,
+      {
+        propFieldName: ApiEditor.dataSourceField,
+        directInput: true,
+        inputFieldName: "",
+        apiOrQuery: "api",
+      },
+      toVerifySave,
+    );
+    this.agHelper.Sleep(); //Is needed for the entered url value to be registered, else failing locally & CI
+    evaluatedValue && this.agHelper.VerifyEvaluatedValue(evaluatedValue);
+  }
+
+  EnterHeader(hKey: string, hValue: string, index = 0) {
+    this.SelectPaneTab("Headers");
+    this.agHelper.EnterValue(hKey, {
+      propFieldName: this._headerKey(index),
+      directInput: true,
+      inputFieldName: "",
+    });
+    this.agHelper.PressEscape();
+    this.agHelper.EnterValue(hValue, {
+      propFieldName: this._headerValue(index),
+      directInput: true,
+      inputFieldName: "",
+    });
+    this.agHelper.PressEscape();
+    this.agHelper.AssertAutoSave();
+  }
+
+  EnterParams(pKey: string, pValue: string, index = 0, escape = true) {
+    this.SelectPaneTab("Params");
+    this.agHelper.EnterValue(pKey, {
+      propFieldName: this._paramKey(index),
+      directInput: true,
+      inputFieldName: "",
+    });
+    this.agHelper.PressEscape();
+    this.agHelper.EnterValue(pValue, {
+      propFieldName: this._paramValue(index),
+      directInput: true,
+      inputFieldName: "",
+    });
+    if (escape) {
+      this.agHelper.PressEscape();
+    }
+    this.agHelper.AssertAutoSave();
+  }
+
+  EnterBodyFormData(
+    subTab: "FORM_URLENCODED" | "MULTIPART_FORM_DATA",
+    bKey: string,
+    bValue: string,
+    type = "",
+    toTrash = false,
+  ) {
+    this.SelectPaneTab("Body");
+    this.SelectSubTab(subTab);
+    if (toTrash) {
+      cy.get(this._trashDelete).first().click();
+      cy.xpath(this._visibleTextSpan("Add more")).click();
+    }
+    this.agHelper.EnterValue(bKey, {
+      propFieldName: this._bodyKey(0),
+      directInput: true,
+      inputFieldName: "",
+    });
+    this.agHelper.PressEscape();
+
+    if (type) {
+      cy.xpath(this._bodyTypeDropdown).eq(0).click();
+      cy.xpath(this._visibleTextDiv(type)).click();
+    }
+    this.agHelper.EnterValue(bValue, {
+      propFieldName: this._bodyValue(0),
+      directInput: true,
+      inputFieldName: "",
+    });
+    this.agHelper.PressEscape();
+    this.agHelper.AssertAutoSave();
+  }
+
+  RunAPI(
+    toValidateResponse = true,
+    waitTimeInterval = 20,
+    validateNetworkAssertOptions?: { expectedPath: string; expectedRes: any },
+  ) {
+    this.agHelper.GetNClick(this._apiRunBtn, 0, true, waitTimeInterval);
+    toValidateResponse &&
+      this.assertHelper.AssertNetworkExecutionSuccess("@postExecute");
+
+    // Asserting Network result
+    validateNetworkAssertOptions?.expectedPath &&
+      validateNetworkAssertOptions?.expectedRes &&
+      this.agHelper.AssertNetworkDataNestedProperty(
+        "@postExecute",
+        validateNetworkAssertOptions.expectedPath,
+        validateNetworkAssertOptions.expectedRes,
+      );
+  }
+
+  SetAPITimeout(timeout: number, toVerifySave = true) {
+    this.pluginActionForm.toolbar.toggleSettings();
+    cy.xpath(this._queryTimeout).clear().type(timeout.toString(), { delay: 0 }); //Delay 0 to work like paste!
+    toVerifySave && this.agHelper.AssertAutoSave();
+    this.SelectPaneTab("Headers");
+  }
+
+  ToggleOnPageLoadRun(enable = true || false) {
+    this.pluginActionForm.toolbar.toggleSettings();
+    if (enable) this.agHelper.CheckUncheck(this._onPageLoad, true);
+    else this.agHelper.CheckUncheck(this._onPageLoad, false);
+  }
+
+  ToggleConfirmBeforeRunning(enable = true || false) {
+    this.pluginActionForm.toolbar.toggleSettings();
+    if (enable) this.agHelper.CheckUncheck(this._confirmBeforeRunning, true);
+    else this.agHelper.CheckUncheck(this._confirmBeforeRunning, false);
+  }
+
+  SelectPaneTab(
+    tabName:
+      | "Headers"
+      | "Params"
+      | "Body"
+      | "Pagination"
+      | "Authentication"
+      | "Response"
+      | "Errors"
+      | "Logs"
+      | "Inspect entity"
+      | "Query",
+  ) {
+    this.agHelper.PressEscape();
+    this.agHelper.GetNClick(this._visibleTextSpan(tabName), 0, true);
+  }
+
+  SelectSubTab(
+    subTabName:
+      | "NONE"
+      | "JSON"
+      | "FORM_URLENCODED"
+      | "MULTIPART_FORM_DATA"
+      | "BINARY"
+      | "RAW",
+  ) {
+    this.agHelper.GetNClick(this._bodyTypeSelect);
+    this.agHelper.GetNClick(this._bodyTypeToSelect(subTabName));
+  }
+
+  AssertRightPaneSelectedTab(tabName: RightPaneTabs) {
+    cy.xpath(this._rightPaneTab(tabName)).should(
+      "have.attr",
+      "aria-selected",
+      "true",
+    );
+  }
+
+  SelectRightPaneTab(tabName: RightPaneTabs) {
+    this.agHelper.GetNClick(this._rightPaneTab(tabName));
+  }
+
+  ValidateQueryParams(param: { key: string; value: string }) {
+    this.SelectPaneTab("Params");
+    this.agHelper.ValidateCodeEditorContent(this._paramKey(0), param.key);
+    this.agHelper.ValidateCodeEditorContent(this._paramValue(0), param.value);
+  }
+
+  ValidateHeaderParams(header: { key: string; value: string }, index = 0) {
+    this.SelectPaneTab("Headers");
+    this.agHelper.ValidateCodeEditorContent(this._headerKey(index), header.key);
+    this.agHelper.ValidateCodeEditorContent(
+      this._headerValue(index),
+      header.value,
+    );
+  }
+
+  ValidateImportedHeaderParams(
+    isAutoGeneratedHeader = false,
+    header: { key: string; value: string },
+    index = 0,
+  ) {
+    let keyValueName = "Header";
+    if (isAutoGeneratedHeader) {
+      keyValueName = "autoGeneratedHeader";
     }
 
-    CreateAndFillApi(url: string, apiname: string = "", apiVerb: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET', queryTimeout = 30000) {
-        this.CreateApi(apiname, apiVerb)
-        this.EnterURL(url)
-        this.agHelper.AssertAutoSave()
-        //this.agHelper.Sleep(2000);// Added because api name edit takes some time to reflect in api sidebar after the call passes.
-        cy.get(this._apiRunBtn).should("not.be.disabled");
-        this.SetAPITimeout(queryTimeout)
+    this.SelectPaneTab("Headers");
+    this.ValidateImportedKeyValueContent(
+      this._importedKey(index, keyValueName),
+      header.key,
+    );
+    this.ValidateImportedKeyValueContent(
+      this._importedValue(index, keyValueName),
+      header.value,
+    );
+  }
+
+  public ValidateImportedKeyValueContent(
+    selector: string,
+    contentToValidate: any,
+  ) {
+    this.agHelper.GetNAssertElementText(
+      selector,
+      contentToValidate,
+      "have.text",
+    );
+  }
+
+  public ValidateImportedKeyValueOverride(index: number, isOverriden = true) {
+    let assertion = "";
+
+    if (isOverriden) {
+      assertion = "have.css";
+    } else {
+      assertion = "not.have.css";
+    }
+    cy.get(this._importedKey(index, "autoGeneratedHeader")).should(
+      assertion,
+      "text-decoration",
+      "line-through solid rgb(76, 86, 100)",
+    );
+    cy.get(this._importedValue(index, "autoGeneratedHeader")).should(
+      assertion,
+      "text-decoration",
+      "line-through solid rgb(76, 86, 100)",
+    );
+  }
+
+  ValidateImportedHeaderParamsAbsence(
+    isAutoGeneratedHeader = false,
+    index = 0,
+  ) {
+    let keyValueName = "Header";
+    if (isAutoGeneratedHeader) {
+      keyValueName = "autoGeneratedHeader";
     }
 
-    EnterURL(url: string) {
-        this.agHelper.EnterValue(url, this._resourceUrl, true)
-        this.agHelper.AssertAutoSave()
-    }
+    this.SelectPaneTab("Headers");
+    this.ValidateImportedKeyValueAbsence(
+      this._importedKey(index, keyValueName),
+    );
+    this.ValidateImportedKeyValueAbsence(
+      this._importedValue(index, keyValueName),
+    );
+  }
 
-    EnterHeader(hKey: string, hValue: string) {
-        this.SelectPaneTab('Headers');
-        this.agHelper.EnterValue(hKey, this._headerKey(0), true)
-        cy.get('body').type("{esc}");
-        this.agHelper.EnterValue(hValue, this._headerValue(0), true)
-        cy.get('body').type("{esc}");
-        this.agHelper.AssertAutoSave()
-    }
+  public ValidateImportedKeyValueAbsence(selector: string) {
+    this.agHelper.AssertElementAbsence(selector);
+  }
 
-    EnterParams(pKey: string, pValue: string) {
-        this.SelectPaneTab('Params')
-        this.agHelper.EnterValue(pKey, this._paramKey(0), true)
-        cy.get('body').type("{esc}");
-        this.agHelper.EnterValue(pValue, this._paramValue(0), true)
-        cy.get('body').type("{esc}");
-        this.agHelper.AssertAutoSave()
-    }
+  ReadApiResponsebyKey(key: string) {
+    let apiResp = "";
+    cy.get(this._responseBody)
+      .contains(key)
+      .siblings("span")
+      .invoke("text")
+      .then((text) => {
+        apiResp = `${text
+          .match(/"(.*)"/)?.[0]
+          .split('"')
+          .join("")} `;
+        cy.log("Key value in api response is :" + apiResp);
+        cy.wrap(apiResp).as("apiResp");
+      });
+  }
 
-    EnterBodyFormData(subTab: 'FORM_URLENCODED' | 'MULTIPART_FORM_DATA', bKey: string, bValue: string, type = "", toTrash = false) {
-        this.SelectPaneTab('Body')
-        this.SelectSubTab(subTab)
-        if (toTrash) {
-            cy.get(this._trashDelete).click()
-            cy.xpath(this._visibleTextSpan('Add more')).click()
+  SwitchToResponseTab(tabIdentifier: string) {
+    cy.get(tabIdentifier).click();
+  }
+
+  public SelectAPIVerb(verb: "GET" | "POST" | "PUT" | "DELETE" | "PATCH") {
+    cy.get(this._apiVerbDropdown).click();
+    cy.xpath(this._verbToSelect(verb)).should("be.visible").click();
+  }
+
+  public AssertAPIVerb(verb: "GET" | "POST" | "PUT" | "DELETE" | "PATCH") {
+    this.agHelper.AssertText(this._apiVerbDropdown, "text", verb);
+  }
+
+  ResponseStatusCheck(statusCode: string) {
+    BottomTabs.response.validateResponseStatus(statusCode);
+  }
+
+  public SelectPaginationTypeViaIndex(index: number) {
+    cy.get(this._paginationTypeLabels).eq(index).click({ force: true });
+  }
+
+  CreateAndFillGraphqlApi(url: string, apiName = "", queryTimeout = 10000) {
+    this.CreateGraphqlApi(apiName);
+    this.EnterURL(url);
+    this.agHelper.AssertAutoSave();
+    this.AssertRunButtonDisability();
+    if (queryTimeout != 10000) this.SetAPITimeout(queryTimeout);
+  }
+
+  CreateGraphqlApi(apiName = "") {
+    AppSidebar.navigate(AppSidebarButton.Editor);
+    PageLeftPane.switchSegment(PagePaneSegment.Queries);
+    PageLeftPane.switchToAddNew();
+    this.agHelper.GetNClickByContains(".ads-v2-listitem", "GraphQL API");
+    this.assertHelper.AssertNetworkStatus("@createNewApi", 201);
+
+    if (apiName) this.agHelper.RenameQuery(apiName);
+    cy.get(ApiEditor.dataSourceField).should("be.visible");
+  }
+
+  AssertEmptyHeaderKeyValuePairsPresent(index: number) {
+    this.agHelper.AssertElementVisibility(this._headerKey(index));
+    this.agHelper.AssertElementVisibility(this._headerValue(index));
+  }
+
+  DebugError() {
+    this.agHelper.GetNClick(this._debugger);
+  }
+
+  public FillCurlNImport(value: string) {
+    AppSidebar.navigate(AppSidebarButton.Editor);
+    PageLeftPane.switchSegment(PagePaneSegment.Queries);
+    PageLeftPane.switchToAddNew();
+    this.agHelper.GetNClick(this.curlImport);
+    this.ImportCurlNRun(value);
+  }
+
+  public ImportCurlNRun(value: string) {
+    this.agHelper.UpdateTextArea(this._curlTextArea, value);
+    this.agHelper.Sleep(500); //Clicking import after value settled
+    cy.get(ApiEditor.curlImportBtn).click({ force: true });
+    cy.wait("@curlImport").should(
+      "have.nested.property",
+      "response.body.responseMeta.status",
+      201,
+    );
+    this.RunAPI();
+  }
+
+  ToggleOnPageLoadRunJsObject(enable = true || false) {
+    this.SelectPaneTab("Settings");
+    if (enable) this.agHelper.CheckUncheck(this.runOnPageLoadJSObject, true);
+    else this.agHelper.CheckUncheck(this.runOnPageLoadJSObject, false);
+  }
+
+  public clickSettingIcon(enable: boolean) {
+    this.agHelper.GetNClick(this.settingsTriggerLocator);
+    if (enable) this.agHelper.CheckUncheck(this.runOnPageLoadJSObject, true);
+    else this.agHelper.CheckUncheck(this.runOnPageLoadJSObject, false);
+  }
+
+  public renameFromEditor(renameVal: string) {
+    cy.get(this.moreActionsTrigger).click();
+    cy.contains("Rename").should("be.visible").click();
+
+    cy.get(this.apiNameInput).clear().type(renameVal, { force: true }).blur();
+
+    PageLeftPane.assertPresence(renameVal);
+  }
+
+  public performActionFromEditor(
+    action: "copy" | "move",
+    apiName: string,
+    sourcePage: string,
+    targetPage: string,
+  ) {
+    // Navigate to the source page and select the API item
+    EditorNavigation.NavigateToPage(sourcePage);
+    PageLeftPane.selectItem(apiName);
+    this.agHelper.AssertClassExists(
+      FileTabs.locators.tabName(apiName),
+      "active",
+    );
+
+    PageList.ShowList();
+    cy.get(PageList.numberOfPages).then(($el) => {
+      // Open the 'More Actions' menu and select the action
+      cy.get(this.moreActionsTrigger).should("be.visible").click(); // Open the 'More Actions' dropdown
+      cy.contains(action === "copy" ? "Copy to page" : "Move to page")
+        .should("be.visible")
+        .trigger("click", { force: true });
+      if (action === "move" && $el.text().includes("All Pages (1)")) {
+        // Handle case where the target page list is empty during move operation
+        cy.get(this.pageList).should("have.text", "No pages");
+      } else if (action === "move" && /All Pages \(\d+\)/.test($el.text())) {
+        cy.get(this.pageList)
+          .should("be.visible")
+          .should("not.have.text", sourcePage)
+          .contains(targetPage)
+          .should("be.visible")
+          .trigger("click", { force: true });
+
+        this.agHelper.ValidateToastMessage(
+          apiName + " action moved to page " + targetPage + " successfully",
+        );
+        PageList.VerifyIsCurrentPage(targetPage); // Verify the target page is active
+        PageLeftPane.assertPresence(apiName); // Assert the API is present on the target page
+        EditorNavigation.NavigateToPage(sourcePage);
+        PageLeftPane.assertAbsence(apiName); // Assert the API is removed from the source page
+      } else {
+        // Select the target page from the page list
+        cy.get(this.pageList)
+          .should("be.visible")
+          .contains(targetPage)
+          .should("be.visible")
+          .trigger("click", { force: true });
+
+        // Validate the toast message and the current page
+        this.agHelper.ValidateToastMessage(
+          `${apiName} action ${action === "copy" ? "copied" : "moved"} to page ${targetPage} successfully`,
+        );
+        PageList.VerifyIsCurrentPage(targetPage); // Verify the target page is active
+
+        // Assert the presence of the API on the target page
+        apiName =
+          action === "copy" && sourcePage === targetPage
+            ? `${apiName}Copy`
+            : apiName;
+        PageLeftPane.assertPresence(apiName);
+
+        if (action === "move") {
+          EditorNavigation.NavigateToPage(sourcePage);
+          PageLeftPane.assertAbsence(apiName); // Assert the API is removed from the source page
         }
-        this.agHelper.EnterValue(bKey, this._bodyKey(0), true)
-        cy.get('body').type("{esc}");
+      }
+    });
+  }
 
-        if (type) {
-            cy.xpath(this._bodyTypeDropdown).eq(0).click()
-            cy.xpath(this._visibleTextDiv(type)).click()
-        }
-        this.agHelper.EnterValue(bValue, this._bodyValue(0), true)
-        cy.get('body').type("{esc}");
-        this.agHelper.AssertAutoSave()
-    }
+  public deleteAPIFromEditor(apiName: string, sourcePage: string) {
+    // Navigate to the source page and select the API item
+    EditorNavigation.NavigateToPage(sourcePage);
+    PageLeftPane.selectItem(apiName);
+    this.agHelper.AssertClassExists(
+      FileTabs.locators.tabName(apiName),
+      "active",
+    );
 
-    RunAPI() {
-        cy.get(this._apiRunBtn).click({ force: true });
-        this.agHelper.ValidateNetworkExecutionSuccess("@postExecute")
-    }
+    this.agHelper.GetNClick(this.moreActionsTrigger);
+    this.agHelper.ContainsNClick("Delete", 0, true);
+    this.agHelper.ContainsNClick("Are you sure?", 0, true);
 
-    SetAPITimeout(timeout: number) {
-        this.SelectPaneTab('Settings');
-        cy.xpath(this._queryTimeout)
-            .clear()
-            .type(timeout.toString());
-        this.agHelper.AssertAutoSave()
-        this.SelectPaneTab('Headers');
-    }
-
-    DisableOnPageLoadRun() {
-        this.SelectPaneTab('Settings');
-        cy.get(this._onPageLoad).uncheck({
-            force: true,
-        });
-    }
-
-    SelectPaneTab(tabName: 'Headers' | 'Params' | 'Body' | 'Pagination' | 'Authentication' | 'Settings') {
-        cy.xpath(this._visibleTextSpan(tabName)).should('be.visible').eq(0).click();
-    }
-
-    SelectSubTab(subTabName: 'NONE' | 'JSON' | 'FORM_URLENCODED' | 'MULTIPART_FORM_DATA' | 'RAW') {
-        cy.get(this._bodySubTab(subTabName)).eq(0).should('be.visible').click();
-    }
-
-    ValidateQueryParams(param: { key: string; value: string; }) {
-        this.SelectPaneTab('Params')
-        this.agHelper.ValidateCodeEditorContent(this._paramKey(0), param.key)
-        this.agHelper.ValidateCodeEditorContent(this._paramValue(0), param.value)
-    }
-
-    ValidateHeaderParams(header: { key: string; value: string; }) {
-        this.SelectPaneTab('Headers')
-        this.agHelper.ValidateCodeEditorContent(this._headerKey(0), header.key)
-        this.agHelper.ValidateCodeEditorContent(this._headerValue(0), header.value)
-    }
-
-    ReadApiResponsebyKey(key: string) {
-        let apiResp: string = "";
-        cy.get(this._responseBody)
-            .contains(key)
-            .siblings("span")
-            .invoke("text")
-            .then((text) => {
-                apiResp = `${text.match(/"(.*)"/)![0].split('"').join("")} `;
-                cy.log("Key value in api response is :" + apiResp);
-                cy.wrap(apiResp).as("apiResp")
-            });
-    }
-
-    public SelectAPIVerb(verb: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') {
-        cy.get(this._apiVerbDropdown).click()
-        cy.xpath(this._verbToSelect(verb)).should('be.visible').click()
-    }
+    // Validate the absence of the API from the source page
+    PageLeftPane.assertAbsence(apiName);
+  }
 }

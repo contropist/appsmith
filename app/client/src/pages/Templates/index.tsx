@@ -1,86 +1,69 @@
-import React, { useEffect } from "react";
-import styled from "styled-components";
+import type { AppState } from "ee/reducers";
 import * as Sentry from "@sentry/react";
-import { Classes, ControlGroup } from "@blueprintjs/core";
-import { debounce, noop } from "lodash";
-import { Switch, Route, useRouteMatch } from "react-router-dom";
-import SearchInput, { SearchVariant } from "components/ads/SearchInput";
-import TemplateList from "./TemplateList";
-import TemplateView from "./TemplateView";
-import Filters from "pages/Templates/Filters";
-import { useDispatch, useSelector } from "react-redux";
-import { setHeaderMeta } from "actions/themeActions";
-import {
-  getAllTemplates,
-  setTemplateSearchQuery,
-} from "actions/templateActions";
-import {
-  getSearchedTemplateList,
-  getTemplateFiltersLength,
-  getTemplateSearchQuery,
-  isFetchingTemplatesSelector,
-} from "selectors/templatesSelectors";
 import { fetchDefaultPlugins } from "actions/pluginActions";
-import { editorInitializer } from "utils/EditorUtils";
-import { AppState } from "reducers";
+import { getAllTemplates, getTemplateFilters } from "actions/templateActions";
+import { setHeaderMeta } from "actions/themeActions";
+import { Text } from "@appsmith/ads";
+import { isEmpty } from "lodash";
+import ReconnectDatasourceModal from "pages/Editor/gitSync/ReconnectDatasourceModal";
+import React, { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { Route, Switch, useRouteMatch } from "react-router-dom";
 import {
-  getIsFetchingApplications,
-  getUserApplicationsOrgsList,
-} from "selectors/applicationSelectors";
-import { getAllApplications } from "actions/applicationActions";
-import { getTypographyByKey } from "constants/DefaultTheme";
-import { Colors } from "constants/Colors";
-import { createMessage, SEARCH_TEMPLATES } from "@appsmith/constants/messages";
+  allTemplatesFiltersSelector,
+  getForkableWorkspaces,
+} from "selectors/templatesSelectors";
+import styled from "styled-components";
+import { editorInitializer } from "utils/editor/EditorUtils";
+
+import { fetchAllWorkspaces } from "ee/actions/workspaceActions";
+import TemplateFilters from "./TemplateFilters";
+import { TemplateContent } from "./TemplateContent";
+import TemplateView from "./TemplateView";
+import { getFetchedWorkspaces } from "ee/selectors/workspaceSelectors";
+
 const SentryRoute = Sentry.withSentryRouting(Route);
 
 const PageWrapper = styled.div`
   margin-top: ${(props) => props.theme.homePage.header}px;
+  background-color: var(--ads-v2-color-gray-50);
+`;
+
+const SidebarWrapper = styled.div`
+  width: ${(props) => props.theme.homePage.sidebar}px;
+  height: 100%;
   display: flex;
-  height: calc(100vh - ${(props) => props.theme.homePage.header}px);
-  padding-left: 8vw;
+  padding: 25px 16px 0;
+  flex-direction: column;
+  position: fixed;
+`;
+
+const SecondaryWrapper = styled.div`
+  height: calc(
+    100vh - ${(props) => props.theme.homePage.header + props.theme.spaces[11]}px
+  );
+  position: relative;
 `;
 
 export const TemplateListWrapper = styled.div`
   padding-top: ${(props) => props.theme.spaces[11]}px;
   width: calc(100% - ${(props) => props.theme.homePage.sidebar}px);
-  height: calc(100vh - ${(props) => props.theme.headerHeight});
-  overflow: auto;
-  padding-right: 8vw;
+  min-height: 100vh;
+  margin-left: ${(props) => props.theme.homePage.sidebar}px;
 `;
 
-export const ResultsCount = styled.div`
-  ${(props) => getTypographyByKey(props, "h1")}
-  color: ${Colors.CODE_GRAY};
-  margin-top: ${(props) => props.theme.spaces[5]}px;
-  margin-left: ${(props) => props.theme.spaces[12]}px;
-  padding-bottom: ${(props) => props.theme.spaces[11]}px;
-`;
-
-const Loader = styled(TemplateListWrapper)`
-  height: 100vh;
-  .results-count {
-    height: 20px;
-    width: 100px;
-  }
-`;
-
-const LoadingTemplateList = styled.div`
-  margin-top: ${(props) => props.theme.spaces[11]}px;
-  // 200 is to have some space at the bottom
-  height: calc(100% - 200px);
-  margin-right: ${(props) => props.theme.spaces[9]}px;
-  margin-left: ${(props) => props.theme.spaces[12] + 2}px;
-`;
-
-const SearchWrapper = styled.div`
-  margin-left: ${(props) => props.theme.spaces[11]}px;
+export const ResultsCount = styled(Text)`
+  color: var(--ads-v2-color-fg-emphasis);
+  margin-top: 20px;
+  margin-left: ${(props) => props.theme.spaces[12] - 8}px;
+  padding-bottom: 20px;
 `;
 
 function TemplateRoutes() {
   const { path } = useRouteMatch();
   const dispatch = useDispatch();
-  const organizationListLength = useSelector(
-    (state: AppState) => getUserApplicationsOrgsList(state).length,
+  const workspaceListLength = useSelector(
+    (state: AppState) => getFetchedWorkspaces(state).length,
   );
   const pluginListLength = useSelector(
     (state: AppState) => state.entities.plugins.defaultPluginList.length,
@@ -88,6 +71,7 @@ function TemplateRoutes() {
   const templatesCount = useSelector(
     (state: AppState) => state.ui.templates.templates.length,
   );
+  const filters = useSelector(allTemplatesFiltersSelector);
 
   useEffect(() => {
     dispatch(setHeaderMeta(true, true));
@@ -102,16 +86,22 @@ function TemplateRoutes() {
   }, [templatesCount]);
 
   useEffect(() => {
-    if (!organizationListLength) {
-      dispatch(getAllApplications());
+    if (!workspaceListLength) {
+      dispatch(fetchAllWorkspaces());
     }
-  }, [organizationListLength]);
+  }, [workspaceListLength]);
 
   useEffect(() => {
     if (!pluginListLength) {
       dispatch(fetchDefaultPlugins());
     }
   }, [pluginListLength]);
+
+  useEffect(() => {
+    if (isEmpty(filters.functions)) {
+      dispatch(getTemplateFilters());
+    }
+  }, [filters]);
 
   return (
     <Switch>
@@ -121,69 +111,19 @@ function TemplateRoutes() {
   );
 }
 
-function TemplateListLoader() {
-  return (
-    <Loader>
-      <ResultsCount className={`results-count ${Classes.SKELETON}`} />
-      <LoadingTemplateList className={Classes.SKELETON} />
-    </Loader>
-  );
-}
-
 function Templates() {
-  const templates = useSelector(getSearchedTemplateList);
-  const templateSearchQuery = useSelector(getTemplateSearchQuery);
-  const isFetchingApplications = useSelector(getIsFetchingApplications);
-  const isFetchingTemplates = useSelector(isFetchingTemplatesSelector);
-  const filterCount = useSelector(getTemplateFiltersLength);
-  const dispatch = useDispatch();
-  let resultsText =
-    templates.length > 1
-      ? `Showing all ${templates.length} templates`
-      : templates.length === 1
-      ? "Showing 1 template"
-      : "No templates to show";
-
-  if (templates.length) {
-    resultsText +=
-      filterCount > 1
-        ? ` matching ${filterCount} filters`
-        : filterCount === 1
-        ? " matching 1 filter"
-        : "";
-  }
-
-  const isLoading = isFetchingApplications || isFetchingTemplates;
-
-  const onChange = (query: string) => {
-    dispatch(setTemplateSearchQuery(query));
-  };
-  const debouncedOnChange = debounce(onChange, 250, { maxWait: 1000 });
+  const workspaceList = useSelector(getForkableWorkspaces);
 
   return (
     <PageWrapper>
-      <Filters />
+      <SidebarWrapper>
+        <SecondaryWrapper>
+          <ReconnectDatasourceModal />
+          <TemplateFilters />
+        </SecondaryWrapper>
+      </SidebarWrapper>
       <TemplateListWrapper>
-        {isLoading ? (
-          <TemplateListLoader />
-        ) : (
-          <>
-            <SearchWrapper>
-              <ControlGroup>
-                <SearchInput
-                  cypressSelector={"t--application-search-input"}
-                  defaultValue={templateSearchQuery}
-                  disabled={isLoading}
-                  onChange={debouncedOnChange || noop}
-                  placeholder={createMessage(SEARCH_TEMPLATES)}
-                  variant={SearchVariant.BACKGROUND}
-                />
-              </ControlGroup>
-            </SearchWrapper>
-            <ResultsCount>{resultsText}</ResultsCount>
-            <TemplateList templates={templates} />
-          </>
-        )}
+        <TemplateContent isForkingEnabled={!!workspaceList.length} />
       </TemplateListWrapper>
     </PageWrapper>
   );

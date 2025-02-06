@@ -1,5 +1,5 @@
 import React from "react";
-import { ReduxActionTypes } from "@appsmith/constants/ReduxActionConstants";
+import { ReduxActionTypes } from "ee/constants/ReduxActionConstants";
 import store from "store";
 import { render } from "test/testUtils";
 import DatasourceCard from "../DatasourceCard";
@@ -13,20 +13,26 @@ describe("Tasks", () => {
     });
     const generatePageComponent = render(
       <DatasourceCard
+        // @ts-expect-error: Type mismatch
         datasource={mockDatasources[0]}
+        // @ts-expect-error: Type mismatch
         plugin={mockPlugins[0]}
       />,
     );
+
     expect(
       generatePageComponent.container.querySelector(".t--generate-template"),
     ).toBeDefined();
 
     const NoGeneratePageComponent = render(
       <DatasourceCard
+        // @ts-expect-error: Type mismatch
         datasource={mockDatasources[1]}
+        // @ts-expect-error: Type mismatch
         plugin={mockPlugins[1]}
       />,
     );
+
     expect(
       NoGeneratePageComponent.container.querySelector(".t--generate-template"),
     ).toBeNull();

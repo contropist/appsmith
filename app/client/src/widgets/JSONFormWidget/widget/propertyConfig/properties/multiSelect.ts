@@ -1,22 +1,29 @@
 import { EvaluationSubstitutionType } from "entities/DataTree/dataTreeFactory";
 import { FieldType } from "widgets/JSONFormWidget/constants";
-import { HiddenFnParams, getSchemaItem } from "../helper";
-import { MultiSelectFieldProps } from "widgets/JSONFormWidget/fields/MultiSelectField";
-import {
-  ValidationResponse,
-  ValidationTypes,
-} from "constants/WidgetValidation";
-import { AutocompleteDataType } from "utils/autocomplete/TernServer";
-import { JSONFormWidgetProps } from "../..";
+import type { HiddenFnParams } from "../helper";
+import { getSchemaItem, getAutocompleteProperties } from "../helper";
+import type { MultiSelectFieldProps } from "widgets/JSONFormWidget/fields/MultiSelectField";
+import type { ValidationResponse } from "constants/WidgetValidation";
+import { ValidationTypes } from "constants/WidgetValidation";
+import { AutocompleteDataType } from "utils/autocomplete/AutocompleteDataType";
+import type { JSONFormWidgetProps } from "../..";
 
 export function defaultOptionValueValidation(
   inputValue: unknown,
   props: JSONFormWidgetProps,
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _: any,
 ): ValidationResponse {
-  const DEFAULT_ERROR_MESSAGE =
-    "value should match: Array<string | number> | Array<{label: string, value: string | number}>";
-  const UNIQUE_ERROR_MESSAGE = "value must be unique. Duplicate values found";
+  const DEFAULT_ERROR_MESSAGE = {
+    name: "TypeError",
+    message:
+      "value should match: Array<string | number> | Array<{label: string, value: string | number}>",
+  };
+  const UNIQUE_ERROR_MESSAGE = {
+    name: "ValidationError",
+    message: "value must be unique. Duplicate values found",
+  };
 
   const hasUniqueValues = (arr: unknown[]) => {
     const uniqueValues = new Set(arr);
@@ -25,6 +32,8 @@ export function defaultOptionValueValidation(
   };
 
   const hasLabelValueProperties = (
+    // TODO: Fix this the next time the file is edited
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     obj: any,
   ): obj is { value: string | number; label: string } => {
     return (
@@ -41,6 +50,7 @@ export function defaultOptionValueValidation(
     if (typeof value === "string" && value.trim() !== "") {
       try {
         const parsedValue = JSON.parse(value as string);
+
         if (Array.isArray(parsedValue)) return parsedValue;
       } catch (e) {
         return value.split(",").map((s) => s.trim());
@@ -60,7 +70,7 @@ export function defaultOptionValueValidation(
     return {
       isValid: true,
       parsed,
-      messages: [""],
+      messages: [{ name: "", message: "" }],
     };
   }
 
@@ -111,7 +121,7 @@ export function defaultOptionValueValidation(
   return {
     isValid: true,
     parsed: values,
-    messages: [""],
+    messages: [{ name: "", message: "" }],
   };
 }
 
@@ -120,7 +130,7 @@ const PROPERTIES = {
     {
       propertyName: "defaultValue",
       helpText: "Selects the option with value by default",
-      label: "Default Value",
+      label: "Default value",
       controlType: "JSON_FORM_COMPUTE_VALUE",
       placeholderText: "[GREEN]",
       isBindProperty: true,
@@ -170,7 +180,7 @@ const PROPERTIES = {
     {
       propertyName: "serverSideFiltering",
       helpText: "Enables server side filtering of the data",
-      label: "Server Side Filtering",
+      label: "Server side filtering",
       controlType: "SWITCH",
       isJSConvertible: true,
       isBindProperty: true,
@@ -184,7 +194,7 @@ const PROPERTIES = {
     {
       propertyName: "allowSelectAll",
       helpText: "Controls the visibility of select all option in dropdown.",
-      label: "Allow Select All",
+      label: "Allow select all",
       controlType: "SWITCH",
       isJSConvertible: true,
       isBindProperty: true,
@@ -198,13 +208,13 @@ const PROPERTIES = {
   actions: [
     {
       propertyName: "onOptionChange",
-      helpText: "Triggers an action when a user selects an option",
+      helpText: "when a user selects an option",
       label: "onOptionChange",
       controlType: "ACTION_SELECTOR",
       isJSConvertible: true,
       isBindProperty: true,
       isTriggerProperty: true,
-      customJSControl: "JSON_FORM_COMPUTE_VALUE",
+      additionalAutoComplete: getAutocompleteProperties,
       dependencies: ["schema"],
       hidden: (...args: HiddenFnParams) =>
         getSchemaItem(...args).fieldTypeNotMatches(FieldType.MULTISELECT),
@@ -217,17 +227,139 @@ const PROPERTIES = {
       isJSConvertible: true,
       isBindProperty: true,
       isTriggerProperty: true,
-      customJSControl: "JSON_FORM_COMPUTE_VALUE",
+      additionalAutoComplete: getAutocompleteProperties,
       dependencies: ["schema"],
       hidden: (...args: HiddenFnParams) =>
         getSchemaItem<MultiSelectFieldProps["schemaItem"]>(...args).compute(
           (schemaItem) => {
             if (schemaItem.fieldType !== FieldType.MULTISELECT) return true;
+
             return !schemaItem.serverSideFiltering;
           },
         ),
     },
   ],
+  content: {
+    data: [
+      {
+        propertyName: "defaultValue",
+        helpText: "Selects the option with value by default",
+        label: "Default selected values",
+        controlType: "JSON_FORM_COMPUTE_VALUE",
+        placeholderText: "[GREEN]",
+        isBindProperty: true,
+        isTriggerProperty: false,
+        validation: {
+          type: ValidationTypes.FUNCTION,
+          params: {
+            fn: defaultOptionValueValidation,
+            expected: {
+              type: "Array of values",
+              example: `['option1', 'option2'] | [{ "label": "label1", "value": "value1" }]`,
+              autocompleteDataType: AutocompleteDataType.ARRAY,
+            },
+          },
+        },
+        evaluationSubstitutionType: EvaluationSubstitutionType.SMART_SUBSTITUTE,
+        dependencies: ["schema", "sourceData"],
+        hidden: (...args: HiddenFnParams) =>
+          getSchemaItem(...args).fieldTypeNotMatches(FieldType.MULTISELECT),
+      },
+    ],
+    general: [
+      {
+        propertyName: "placeholderText",
+        helpText: "Sets a Placeholder text",
+        label: "Placeholder",
+        controlType: "JSON_FORM_COMPUTE_VALUE",
+        placeholderText: "Search",
+        isBindProperty: true,
+        isTriggerProperty: false,
+        validation: { type: ValidationTypes.TEXT },
+        dependencies: ["schema"],
+        hidden: (...args: HiddenFnParams) =>
+          getSchemaItem(...args).fieldTypeNotMatches(FieldType.MULTISELECT),
+      },
+    ],
+    toggles: [
+      {
+        propertyName: "allowSelectAll",
+        helpText: "Controls the visibility of select all option in dropdown.",
+        label: "Allow select all",
+        controlType: "SWITCH",
+        isJSConvertible: true,
+        isBindProperty: true,
+        isTriggerProperty: false,
+        validation: { type: ValidationTypes.BOOLEAN },
+        dependencies: ["schema"],
+        hidden: (...args: HiddenFnParams) =>
+          getSchemaItem(...args).fieldTypeNotMatches(FieldType.MULTISELECT),
+      },
+    ],
+    events: [
+      {
+        propertyName: "onOptionChange",
+        helpText: "when a user selects an option",
+        label: "onOptionChange",
+        controlType: "ACTION_SELECTOR",
+        isJSConvertible: true,
+        isBindProperty: true,
+        isTriggerProperty: true,
+        additionalAutoComplete: getAutocompleteProperties,
+        dependencies: ["schema"],
+        hidden: (...args: HiddenFnParams) =>
+          getSchemaItem(...args).fieldTypeNotMatches(FieldType.MULTISELECT),
+      },
+    ],
+    searchAndFilters: [
+      {
+        propertyName: "isFilterable",
+        label: "Allow searching",
+        helpText: "Makes the dropdown list filterable",
+        controlType: "SWITCH",
+        isJSConvertible: true,
+        isBindProperty: true,
+        isTriggerProperty: false,
+        validation: { type: ValidationTypes.BOOLEAN },
+        dependencies: ["schema"],
+        hidden: (...args: HiddenFnParams) =>
+          getSchemaItem(...args).fieldTypeNotMatches(FieldType.MULTISELECT),
+      },
+      {
+        propertyName: "serverSideFiltering",
+        helpText: "Enables server side filtering of the data",
+        label: "Server side filtering",
+        controlType: "SWITCH",
+        isJSConvertible: true,
+        isBindProperty: true,
+        isTriggerProperty: false,
+        customJSControl: "JSON_FORM_COMPUTE_VALUE",
+        validation: { type: ValidationTypes.BOOLEAN },
+        dependencies: ["schema"],
+        hidden: (...args: HiddenFnParams) =>
+          getSchemaItem(...args).fieldTypeNotMatches(FieldType.MULTISELECT),
+      },
+      {
+        helpText: "Trigger an action on change of filterText",
+        propertyName: "onFilterUpdate",
+        label: "onFilterUpdate",
+        controlType: "ACTION_SELECTOR",
+        isJSConvertible: true,
+        isBindProperty: true,
+        isTriggerProperty: true,
+        additionalAutoComplete: getAutocompleteProperties,
+        dependencies: ["schema"],
+        hidden: (...args: HiddenFnParams) =>
+          getSchemaItem<MultiSelectFieldProps["schemaItem"]>(...args).compute(
+            (schemaItem) => {
+              if (schemaItem.fieldType !== FieldType.MULTISELECT) return true;
+
+              return !schemaItem.serverSideFiltering;
+            },
+          ),
+      },
+    ],
+  },
 };
 
 export default PROPERTIES;

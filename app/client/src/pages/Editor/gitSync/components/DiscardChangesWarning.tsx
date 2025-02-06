@@ -1,46 +1,44 @@
-import {
-  NotificationBanner,
-  NotificationBannerProps,
-  NotificationVariant,
-} from "components/ads/NotificationBanner";
 import React from "react";
 import {
   createMessage,
   DISCARD_CHANGES_WARNING,
-} from "@appsmith/constants/messages";
+  DISCARD_MESSAGE,
+} from "ee/constants/messages";
+import { Callout, Text } from "@appsmith/ads";
 import styled from "styled-components";
-import { Colors } from "constants/Colors";
-import Text, { TextType } from "../../../../components/ads/Text";
-
-function DiscardWarningMessage() {
-  return (
-    <Text color={Colors.ERROR_600} type={TextType.P3}>
-      {createMessage(DISCARD_CHANGES_WARNING)}
-    </Text>
-  );
-}
 
 const Container = styled.div`
   margin: 8px 0 16px;
 `;
 
 export default function DiscardChangesWarning({
-  discardDocUrl,
   onCloseDiscardChangesWarning,
-}: any) {
-  const notificationBannerOptions: NotificationBannerProps = {
-    canClose: true,
-    className: "error",
-    icon: "warning-line",
-    onClose: () => onCloseDiscardChangesWarning(),
-    variant: NotificationVariant.error,
-    learnMoreClickHandler: () => window.open(discardDocUrl, "_blank"),
-  };
+}: {
+  onCloseDiscardChangesWarning: () => void;
+}) {
+  const discardDocUrl =
+    "https://docs.appsmith.com/advanced-concepts/version-control-with-git/commit-and-push";
+
   return (
     <Container>
-      <NotificationBanner {...notificationBannerOptions}>
-        <DiscardWarningMessage />
-      </NotificationBanner>
+      <Callout
+        data-testid="t--discard-callout"
+        isClosable
+        kind="error"
+        links={[
+          {
+            children: "Learn more",
+            endIcon: "right-arrow",
+            to: discardDocUrl,
+            target: "_blank",
+          },
+        ]}
+        onClose={onCloseDiscardChangesWarning}
+      >
+        <Text kind="heading-xs">{createMessage(DISCARD_CHANGES_WARNING)}</Text>
+        <br />
+        {createMessage(DISCARD_MESSAGE)}
+      </Callout>
     </Container>
   );
 }

@@ -1,9 +1,8 @@
 import React from "react";
 import { Colors } from "constants/Colors";
 import styled from "styled-components";
-import Text, { Case, FontWeight, TextType } from "components/ads/Text";
-import Icon, { IconSize } from "components/ads/Icon";
-import { Classes } from "components/ads/common";
+import { Classes, Text, Case, FontWeight, TextType } from "@appsmith/ads-old";
+import { Icon } from "@appsmith/ads";
 
 const LinkText = styled.div<{ color?: string }>`
   cursor: pointer;
@@ -38,6 +37,7 @@ export default function Link({
   const clickHandler = () => {
     onClick ? onClick() : window.open(link, "_blank");
   };
+
   return (
     <LinkText
       className={className}
@@ -52,14 +52,7 @@ export default function Link({
       >
         {text}
       </Text>
-      {hasIcon && (
-        <Icon
-          fillColor={color || Colors.CHARCOAL}
-          hoverFillColor={color || Colors.CHARCOAL}
-          name="right-arrow"
-          size={IconSize.SMALL}
-        />
-      )}
+      {hasIcon && <Icon name="right-arrow" size="sm" />}
     </LinkText>
   );
 }

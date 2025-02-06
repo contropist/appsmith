@@ -1,8 +1,9 @@
 import React from "react";
 import styled, { createGlobalStyle } from "styled-components";
-import Dropdown, { DropdownOption } from "components/ads/Dropdown";
-import { CurrencyTypeOptions, CurrencyOptionProps } from "constants/Currency";
-import Icon, { IconSize } from "components/ads/Icon";
+import type { CurrencyOptionProps } from "constants/Currency";
+import { CurrencyTypeOptions } from "constants/Currency";
+import type { DropdownOption } from "@design-system/widgets-old";
+import { Dropdown, Icon, IconSize } from "@design-system/widgets-old";
 import { countryToFlag } from "./utilities";
 import { Colors } from "constants/Colors";
 import { Classes } from "@blueprintjs/core";
@@ -19,8 +20,8 @@ const DropdownTriggerIconWrapper = styled.div`
 
   .dropdown {
     svg {
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
 
       path {
         fill: ${Colors.GREY_10} !important;
@@ -65,12 +66,15 @@ export const PopoverStyles = createGlobalStyle<{
     }
 
     .${props.portalClassName}  .${Classes.INPUT}:focus, .${
-    props.portalClassName
-  }  .${Classes.INPUT}:active {
+      props.portalClassName
+    }  .${Classes.INPUT}:active {
       border: 1px solid ${props.accentColor} !important;
     }
 
-    .${props.portalClassName} .t--dropdown-option:hover,
+    .${props.portalClassName} .t--dropdown-option:hover {
+      background-color: var(--wds-color-bg-hover) !important;
+    }
+
     .${props.portalClassName} .t--dropdown-option.selected {
       background-color: ${lightenColor(props.accentColor)} !important;
     }
@@ -103,6 +107,7 @@ export const getSelectedCurrency = (
         return item.code === currencyCountryCode;
       })
     : undefined;
+
   if (!selectedCurrency) {
     selectedCurrency = {
       code: "US",
@@ -113,6 +118,7 @@ export const getSelectedCurrency = (
       symbol_native: "$",
     };
   }
+
   return {
     label: `${selectedCurrency.currency} - ${selectedCurrency.currency_name}`,
     searchText: selectedCurrency.label,
@@ -133,9 +139,11 @@ interface CurrencyDropdownProps {
 
 export default function CurrencyTypeDropdown(props: CurrencyDropdownProps) {
   const selectedCurrency = getSelectedCurrency(props.selected.value).id;
+
   if (!props.allowCurrencyChange) {
     return <CurrencyIconWrapper>{selectedCurrency}</CurrencyIconWrapper>;
   }
+
   const dropdownTriggerIcon = (
     <DropdownTriggerIconWrapper
       className="h-full gap-2 px-3 t--input-currency-change focus:bg-gray-50"
@@ -145,6 +153,7 @@ export default function CurrencyTypeDropdown(props: CurrencyDropdownProps) {
       <Icon className="dropdown" name="downArrow" size={IconSize.XXS} />
     </DropdownTriggerIconWrapper>
   );
+
   return (
     <>
       <Dropdown

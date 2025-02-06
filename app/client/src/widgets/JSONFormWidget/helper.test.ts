@@ -1,10 +1,9 @@
+import type { Schema, SchemaItem } from "./constants";
 import {
   ARRAY_ITEM_KEY,
   DataType,
   FieldType,
   ROOT_SCHEMA_KEY,
-  Schema,
-  SchemaItem,
 } from "./constants";
 import {
   convertSchemaItemToFormData,
@@ -16,12 +15,13 @@ import {
 
 describe(".schemaItemDefaultValue", () => {
   it("returns array default value when sub array fields don't have default value", () => {
-    const schemaItem = ({
+    const schemaItem = {
       accessor: "education",
       identifier: "education",
       originalIdentifier: "education",
       dataType: DataType.ARRAY,
       fieldType: FieldType.ARRAY,
+      isVisible: true,
       defaultValue: [
         {
           college: "String field",
@@ -35,10 +35,12 @@ describe(".schemaItemDefaultValue", () => {
           dataType: DataType.OBJECT,
           fieldType: FieldType.OBJECT,
           defaultValue: undefined,
+          isVisible: true,
           children: {
             college: {
               label: "College",
               children: {},
+              isVisible: true,
               dataType: DataType.STRING,
               defaultValue: undefined,
               fieldType: FieldType.TEXT_INPUT,
@@ -48,6 +50,7 @@ describe(".schemaItemDefaultValue", () => {
             },
             graduationDate: {
               children: {},
+              isVisible: true,
               dataType: DataType.STRING,
               defaultValue: undefined,
               fieldType: FieldType.DATEPICKER,
@@ -58,7 +61,7 @@ describe(".schemaItemDefaultValue", () => {
           },
         },
       },
-    } as unknown) as SchemaItem;
+    } as unknown as SchemaItem;
 
     const expectedDefaultValue = [
       {
@@ -73,12 +76,13 @@ describe(".schemaItemDefaultValue", () => {
   });
 
   it("returns array default value when sub array fields don't have default value with accessor keys", () => {
-    const schemaItem = ({
+    const schemaItem = {
       accessor: "education 1",
       identifier: "education",
       originalIdentifier: "education",
       dataType: DataType.ARRAY,
       fieldType: FieldType.ARRAY,
+      isVisible: true,
       defaultValue: [
         {
           college: "String field",
@@ -92,6 +96,7 @@ describe(".schemaItemDefaultValue", () => {
           dataType: DataType.OBJECT,
           fieldType: FieldType.OBJECT,
           defaultValue: undefined,
+          isVisible: true,
           children: {
             college: {
               label: "College",
@@ -102,6 +107,7 @@ describe(".schemaItemDefaultValue", () => {
               accessor: "graduating college",
               identifier: "college",
               originalIdentifier: "college",
+              isVisible: true,
             },
             graduationDate: {
               children: {},
@@ -111,11 +117,12 @@ describe(".schemaItemDefaultValue", () => {
               accessor: "graduation date",
               identifier: "graduationDate",
               originalIdentifier: "graduationDate",
+              isVisible: true,
             },
           },
         },
       },
-    } as unknown) as SchemaItem;
+    } as unknown as SchemaItem;
 
     const expectedDefaultValue = [
       {
@@ -130,13 +137,14 @@ describe(".schemaItemDefaultValue", () => {
   });
 
   it("returns merged default value when sub array fields have default value", () => {
-    const schemaItem = ({
+    const schemaItem = {
       name: "education",
       accessor: "education",
       identifier: "education",
       originalIdentifier: "education",
       dataType: DataType.ARRAY,
       fieldType: FieldType.ARRAY,
+      isVisible: true,
       defaultValue: [
         {
           college: "String field",
@@ -154,6 +162,7 @@ describe(".schemaItemDefaultValue", () => {
             college: "String field",
             graduationDate: "10/12/2021",
           },
+          isVisible: true,
           children: {
             college: {
               label: "College",
@@ -164,6 +173,7 @@ describe(".schemaItemDefaultValue", () => {
               accessor: "college",
               identifier: "college",
               originalIdentifier: "college",
+              isVisible: true,
             },
             graduationDate: {
               children: {},
@@ -173,11 +183,12 @@ describe(".schemaItemDefaultValue", () => {
               accessor: "graduationDate",
               identifier: "graduationDate",
               originalIdentifier: "graduationDate",
+              isVisible: true,
             },
           },
         },
       },
-    } as unknown) as SchemaItem;
+    } as unknown as SchemaItem;
 
     const expectedDefaultValue = [
       {
@@ -192,7 +203,7 @@ describe(".schemaItemDefaultValue", () => {
   });
 
   it("returns merged default value when array field has default value more than one item", () => {
-    const schemaItem = ({
+    const schemaItem = {
       name: "education",
       accessor: "education",
       identifier: "education",
@@ -216,6 +227,7 @@ describe(".schemaItemDefaultValue", () => {
           originalIdentifier: ARRAY_ITEM_KEY,
           dataType: DataType.OBJECT,
           fieldType: FieldType.OBJECT,
+          isVisible: true,
           defaultValue: {
             college: "String field",
             graduationDate: "10/12/2021",
@@ -230,6 +242,7 @@ describe(".schemaItemDefaultValue", () => {
               accessor: "college",
               identifier: "college",
               originalIdentifier: "college",
+              isVisible: true,
             },
             graduationDate: {
               children: {},
@@ -239,11 +252,12 @@ describe(".schemaItemDefaultValue", () => {
               accessor: "graduationDate",
               identifier: "graduationDate",
               originalIdentifier: "graduationDate",
+              isVisible: true,
             },
           },
         },
       },
-    } as unknown) as SchemaItem;
+    } as unknown as SchemaItem;
 
     const expectedDefaultValue = [
       {
@@ -262,7 +276,7 @@ describe(".schemaItemDefaultValue", () => {
   });
 
   it("returns only sub array fields default value, when array level default value is empty", () => {
-    const schemaItem = ({
+    const schemaItem = {
       accessor: "education",
       identifier: "education",
       originalIdentifier: "education",
@@ -300,7 +314,7 @@ describe(".schemaItemDefaultValue", () => {
           },
         },
       },
-    } as unknown) as SchemaItem;
+    } as unknown as SchemaItem;
 
     const expectedDefaultValue = [
       {
@@ -315,7 +329,7 @@ describe(".schemaItemDefaultValue", () => {
   });
 
   it("returns valid default value when non compliant keys in default value is present", () => {
-    const schemaItem = ({
+    const schemaItem = {
       accessor: "education",
       identifier: "education",
       originalIdentifier: "education",
@@ -335,6 +349,7 @@ describe(".schemaItemDefaultValue", () => {
           dataType: DataType.OBJECT,
           fieldType: FieldType.OBJECT,
           defaultValue: undefined,
+          isVisible: true,
           children: {
             graduating_college: {
               label: "College",
@@ -345,6 +360,7 @@ describe(".schemaItemDefaultValue", () => {
               accessor: "college",
               identifier: "graduating_college",
               originalIdentifier: "graduating college",
+              isVisible: true,
             },
             graduation_date: {
               children: {},
@@ -354,11 +370,12 @@ describe(".schemaItemDefaultValue", () => {
               accessor: "newDate",
               identifier: "graduation_date",
               originalIdentifier: "graduation date",
+              isVisible: true,
             },
           },
         },
       },
-    } as unknown) as SchemaItem;
+    } as unknown as SchemaItem;
 
     const expectedDefaultValue = [
       {
@@ -558,7 +575,7 @@ describe(".countFields", () => {
 });
 
 describe(".convertSchemaItemToFormData", () => {
-  const schema = ({
+  const schema = {
     __root_schema__: {
       children: {
         customField1: {
@@ -568,6 +585,34 @@ describe(".convertSchemaItemToFormData", () => {
           accessor: "gender",
           identifier: "customField1",
           originalIdentifier: "customField1",
+          isVisible: true,
+        },
+        customField2: {
+          children: {},
+          dataType: DataType.STRING,
+          fieldType: FieldType.TEXT_INPUT,
+          accessor: "age",
+          identifier: "customField2",
+          originalIdentifier: "customField2",
+          isVisible: false,
+        },
+        hiddenNonASCII: {
+          isVisible: false,
+          children: {},
+          dataType: DataType.STRING,
+          fieldType: FieldType.TEXT_INPUT,
+          accessor: "हिन्दि",
+          identifier: "hiddenNonASCII",
+          originalIdentifier: "हिन्दि",
+        },
+        hiddenSmiley: {
+          isVisible: false,
+          children: {},
+          dataType: DataType.STRING,
+          fieldType: FieldType.TEXT_INPUT,
+          accessor: "😀",
+          identifier: "hiddenSmiley",
+          originalIdentifier: "😀",
         },
         array: {
           children: {
@@ -579,6 +624,15 @@ describe(".convertSchemaItemToFormData", () => {
                   accessor: "firstName",
                   identifier: "name",
                   originalIdentifier: "name",
+                  isVisible: true,
+                },
+                date: {
+                  dataType: DataType.STRING,
+                  fieldType: FieldType.TEXT_INPUT,
+                  accessor: "graduationDate",
+                  identifier: "date",
+                  originalIdentifier: "date",
+                  isVisible: false,
                 },
               },
               dataType: DataType.OBJECT,
@@ -586,6 +640,7 @@ describe(".convertSchemaItemToFormData", () => {
               accessor: ARRAY_ITEM_KEY,
               identifier: ARRAY_ITEM_KEY,
               originalIdentifier: ARRAY_ITEM_KEY,
+              isVisible: true,
             },
           },
           dataType: DataType.ARRAY,
@@ -593,6 +648,87 @@ describe(".convertSchemaItemToFormData", () => {
           accessor: "students",
           identifier: "array",
           originalIdentifier: "array",
+          isVisible: true,
+        },
+        hiddenArray: {
+          children: {
+            __array_item__: {
+              children: {
+                name: {
+                  dataType: DataType.STRING,
+                  fieldType: FieldType.TEXT_INPUT,
+                  accessor: "firstName",
+                  identifier: "name",
+                  originalIdentifier: "name",
+                  isVisible: true,
+                },
+              },
+              dataType: DataType.OBJECT,
+              fieldType: FieldType.OBJECT,
+              accessor: ARRAY_ITEM_KEY,
+              identifier: ARRAY_ITEM_KEY,
+              originalIdentifier: ARRAY_ITEM_KEY,
+              isVisible: true,
+            },
+          },
+          dataType: DataType.ARRAY,
+          fieldType: FieldType.ARRAY,
+          accessor: "testHiddenArray",
+          identifier: "hiddenArray",
+          originalIdentifier: "hiddenArray",
+          isVisible: false,
+        },
+        visibleObject: {
+          children: {
+            name: {
+              dataType: DataType.STRING,
+              fieldType: FieldType.TEXT_INPUT,
+              accessor: "firstName",
+              identifier: "name",
+              originalIdentifier: "name",
+              isVisible: true,
+            },
+            date: {
+              dataType: DataType.STRING,
+              fieldType: FieldType.TEXT_INPUT,
+              accessor: "graduationDate",
+              identifier: "date",
+              originalIdentifier: "date",
+              isVisible: false,
+            },
+          },
+          dataType: DataType.OBJECT,
+          fieldType: FieldType.OBJECT,
+          accessor: "testVisibleObject",
+          identifier: "visibleObject",
+          originalIdentifier: "visibleObject",
+          isVisible: true,
+        },
+        hiddenObject: {
+          children: {
+            name: {
+              dataType: DataType.STRING,
+              fieldType: FieldType.TEXT_INPUT,
+              accessor: "firstName",
+              identifier: "name",
+              originalIdentifier: "name",
+              isVisible: true,
+            },
+            date: {
+              dataType: DataType.STRING,
+              fieldType: FieldType.TEXT_INPUT,
+              accessor: "graduationDate",
+              identifier: "date",
+              originalIdentifier: "date",
+              isVisible: false,
+            },
+          },
+          dataType: DataType.OBJECT,
+          fieldType: FieldType.OBJECT,
+          accessor: "testHiddenObject",
+          identifier: "hiddenObject",
+          originalIdentifier: "hiddenObject",
+          isVisible: false,
         },
       },
       dataType: DataType.OBJECT,
@@ -600,18 +736,27 @@ describe(".convertSchemaItemToFormData", () => {
       accessor: "",
       identifier: "",
       originalIdentifier: "",
+      isVisible: true,
     },
-  } as unknown) as Schema;
+  } as unknown as Schema;
 
   it("replaces data with accessor keys to identifier keys", () => {
     const formData = {
       gender: "male",
-      students: [{ firstName: "test1" }, { firstName: "test2" }],
+      age: "20",
+      students: [
+        { firstName: "test1", graduationDate: "10/12/2010" },
+        { firstName: "test2", graduationDate: "14/02/2010" },
+      ],
+      testHiddenArray: [{ firstName: "test1" }, { firstName: "test2" }],
+      testVisibleObject: { firstName: "test1", graduationDate: "10/12/2010" },
+      testHiddenObject: { firstName: "test1", graduationDate: "10/12/2010" },
     };
 
     const expectedOutput = {
       customField1: "male",
       array: [{ name: "test1" }, { name: "test2" }],
+      visibleObject: { name: "test1" },
     };
 
     const result = convertSchemaItemToFormData(
@@ -628,11 +773,15 @@ describe(".convertSchemaItemToFormData", () => {
       customField1: "male",
       customField2: "demo",
       array: [{ name: "test1" }, { name: "test2" }],
+      hiddenArray: [{ name: "test1" }, { name: "test2" }],
+      visibleObject: { name: "test1", date: "10/12/2010" },
+      hiddenObject: { name: "test1", date: "10/12/2010" },
     };
 
     const expectedOutput = {
       gender: "male",
       students: [{ firstName: "test1" }, { firstName: "test2" }],
+      testVisibleObject: { firstName: "test1" },
     };
 
     const result = convertSchemaItemToFormData(
@@ -647,11 +796,16 @@ describe(".convertSchemaItemToFormData", () => {
   it("replaces data with identifier keys to accessor keys when keys are missing", () => {
     const formData = {
       customField1: "male",
-      customField2: "demo",
+      customField2: "demo1",
+      customField3: "demo2",
+      hiddenArray: [{ name: "test1" }, { name: "test2" }],
+      visibleObject: { name: "test1", date: "10/12/2010" },
+      hiddenObject: { name: "test1", date: "10/12/2010" },
     };
 
     const expectedOutput = {
       gender: "male",
+      testVisibleObject: { firstName: "test1" },
     };
 
     const result = convertSchemaItemToFormData(
@@ -668,17 +822,107 @@ describe(".convertSchemaItemToFormData", () => {
       customField1: "male",
       customField2: "demo",
       array: [{ name: "test1" }, { name: undefined }],
+      hiddenArray: [{ name: "test1" }, { name: "test2" }],
+      visibleObject: { name: "test1", date: "10/12/2010" },
+      hiddenObject: { name: "test1", date: "10/12/2010" },
     };
 
     const expectedOutput = {
       gender: "male",
       students: [{ firstName: "test1" }, { firstName: undefined }],
+      testVisibleObject: { firstName: "test1" },
     };
 
     const result = convertSchemaItemToFormData(
       schema[ROOT_SCHEMA_KEY],
       formData,
       { fromId: "identifier", toId: "accessor" },
+    );
+
+    expect(result).toEqual(expectedOutput);
+  });
+
+  it("set hidden form field value to available source field value when useSourceData is set to true", () => {
+    const formData = {
+      customField1: "male",
+      customField2: "demo",
+      array: [{ name: "test1" }, { name: null, date: "10/12/2010" }],
+      hiddenArray: [{ name: "test1" }, { name: "test2" }],
+      visibleObject: { name: "test1", date: "10/12/2010" },
+      hiddenObject: { name: "test1", date: "10/12/2010" },
+    };
+
+    const sourceData = {
+      customField1: "soruceMale",
+      customField2: "sourceDemo",
+      array: [
+        { name: "sourceTest1" },
+        { name: "sourceTest2", date: "11/11/1111" },
+      ],
+      hiddenArray: [{ name: "sourceTest1" }, { name: "sourceTest2" }],
+      hiddenObject: { name: "sourceTest1" },
+    };
+
+    const expectedOutput = {
+      gender: "male",
+      age: "sourceDemo",
+      students: [
+        { firstName: "test1" },
+        { firstName: null, graduationDate: "11/11/1111" },
+      ],
+      testHiddenArray: [
+        { firstName: "sourceTest1" },
+        { firstName: "sourceTest2" },
+      ],
+      testVisibleObject: { firstName: "test1" },
+      testHiddenObject: { firstName: "sourceTest1" },
+    };
+
+    const result = convertSchemaItemToFormData(
+      schema[ROOT_SCHEMA_KEY],
+      formData,
+      {
+        fromId: "identifier",
+        toId: "accessor",
+        sourceData: sourceData,
+        useSourceData: true,
+      },
+    );
+
+    expect(result).toEqual(expectedOutput);
+  });
+
+  it("return expected result for non-ASCII source value when field is hidden and useSourceData is set to true", () => {
+    const formData = {
+      customField1: "male",
+      array: [{ name: "test1" }, { name: null, date: "10/12/2010" }],
+      hiddenNonASCII: "test",
+      hiddenSmiley: "test 2",
+      visibleObject: { name: "test1", date: "10/12/2010" },
+    };
+
+    const sourceData = {
+      हिन्दि: "हिन्दि",
+      "😀": "😀",
+    };
+
+    const expectedOutput = {
+      gender: "male",
+      students: [{ firstName: "test1" }, { firstName: null }],
+      हिन्दि: "हिन्दि",
+      "😀": "😀",
+      testVisibleObject: { firstName: "test1" },
+    };
+
+    const result = convertSchemaItemToFormData(
+      schema[ROOT_SCHEMA_KEY],
+      formData,
+      {
+        fromId: "identifier",
+        toId: "accessor",
+        sourceData: sourceData,
+        useSourceData: true,
+      },
     );
 
     expect(result).toEqual(expectedOutput);

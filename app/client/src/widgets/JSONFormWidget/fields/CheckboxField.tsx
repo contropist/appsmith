@@ -7,15 +7,18 @@ import FormContext from "../FormContext";
 import Field from "../component/Field";
 import useEvents from "./useBlurAndFocusEvents";
 import useRegisterFieldValidity from "./useRegisterFieldValidity";
-import { AlignWidget } from "widgets/constants";
-import {
+import type { AlignWidget } from "WidgetProvider/constants";
+import type {
   BaseFieldComponentProps,
   FieldComponentBaseProps,
   FieldEventProps,
 } from "../constants";
+import { ActionUpdateDependency } from "../constants";
 import { EventType } from "constants/AppsmithActionConstants/ActionConstants";
 import { Colors } from "constants/Colors";
 import { BASE_LABEL_TEXT_SIZE } from "../component/FieldLabel";
+import { LabelPosition } from "components/constants";
+import useUnmountFieldValidation from "./useUnmountFieldValidation";
 
 type CheckboxComponentProps = FieldComponentBaseProps &
   FieldEventProps & {
@@ -56,10 +59,8 @@ function CheckboxField({
   passedDefaultValue,
   schemaItem,
 }: CheckboxFieldProps) {
-  const {
-    onBlur: onBlurDynamicString,
-    onFocus: onFocusDynamicString,
-  } = schemaItem;
+  const { onBlur: onBlurDynamicString, onFocus: onFocusDynamicString } =
+    schemaItem;
   const { executeAction } = useContext(FormContext);
 
   const {
@@ -82,6 +83,7 @@ function CheckboxField({
     fieldType: schemaItem.fieldType,
     isValid: isValueValid,
   });
+  useUnmountFieldValidation({ fieldName: name });
 
   const onCheckChange = useCallback(
     (isChecked: boolean) => {
@@ -94,6 +96,7 @@ function CheckboxField({
           event: {
             type: EventType.ON_CHECK_CHANGE,
           },
+          updateDependencyType: ActionUpdateDependency.FORM_DATA,
         });
       }
     },
@@ -113,9 +116,9 @@ function CheckboxField({
           isRequired={schemaItem.isRequired}
           isValid={isDirty ? isValueValid : true}
           label=""
+          labelPosition={LabelPosition.Left}
           noContainerPadding
           onCheckChange={onCheckChange}
-          rowSpace={20}
           widgetId=""
         />
       </StyledCheckboxWrapper>

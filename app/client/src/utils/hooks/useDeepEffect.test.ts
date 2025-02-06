@@ -10,6 +10,7 @@ describe(".useDeepEffect", () => {
         "test";
       }, []),
     );
+
     expect(result.error).toMatchInlineSnapshot(
       `[Error: useDeepEffect should not be used with no dependencies. Use React.useEffect instead.]`,
     );
@@ -21,6 +22,7 @@ describe(".useDeepEffect", () => {
         "test";
       }, [true, 1, "string"]),
     );
+
     expect(result.error).toMatchInlineSnapshot(
       `[Error: useDeepEffect should not be used with dependencies that are all primitive values. Use React.useEffect instead.]`,
     );
@@ -28,21 +30,20 @@ describe(".useDeepEffect", () => {
 
   it("production mode there are no errors thrown", () => {
     const env = process.env.NODE_ENV;
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
+
+    // @ts-expect-error: Types are not available
     process.env.NODE_ENV = "production";
     renderHook(() =>
       useDeepEffect(() => {
-        "";
+        ("");
       }, [true, 1, "string"]),
     );
     renderHook(() =>
       useDeepEffect(() => {
-        "";
+        ("");
       }, []),
     );
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
+    // @ts-expect-error: Types are not available
     process.env.NODE_ENV = env;
   });
 
@@ -93,6 +94,7 @@ describe(".useDeepEffect", () => {
     const callback = jest.fn();
     let deps: Array<Record<string, unknown>> = [{ a: { b: { c: "d" } } }];
     const { rerender } = renderHook(() => useDeepEffect(callback, deps));
+
     expect(callback).toHaveBeenCalledTimes(1);
     callback.mockClear();
 
@@ -121,14 +123,17 @@ describe(".useDeepEffect", () => {
       ({ a }: { a: number }) => {
         const [lastA, setLastA] = useState(a);
         const [c, setC] = useState(5);
+
         if (lastA !== a) {
           setLastA(a);
           setC(1);
         }
+
         useDeepEffect(callback, [{ a, c }]);
       },
       { initialProps: { a: 1 } },
     );
+
     expect(callback).toHaveBeenCalledTimes(1);
     callback.mockClear();
 

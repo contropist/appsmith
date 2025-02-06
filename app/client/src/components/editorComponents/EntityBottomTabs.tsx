@@ -1,85 +1,103 @@
-import React, { useState, useEffect, RefObject } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { setCurrentTab } from "actions/debuggerActions";
-import {
-  CollapsibleTabProps,
-  collapsibleTabRequiredPropKeys,
-  TabComponent,
-  TabProp,
-} from "components/ads/Tabs";
-import { getCurrentDebuggerTab } from "selectors/debuggerSelectors";
-import AnalyticsUtil from "utils/AnalyticsUtil";
-import { DEBUGGER_TAB_KEYS } from "./Debugger/helpers";
+import React from "react";
+import AnalyticsUtil from "ee/utils/AnalyticsUtil";
+import { DEBUGGER_TAB_KEYS } from "./Debugger/constants";
+import { Tab, TabPanel, Tabs, TabsList } from "@appsmith/ads";
+import styled from "styled-components";
+import { LIST_HEADER_HEIGHT, FOOTER_MARGIN } from "./Debugger/DebuggerLogs";
+import type { RefObject } from "react";
 
-type EntityBottomTabsProps = {
-  defaultIndex: number;
-  tabs: TabProp[];
-  responseViewer?: boolean;
-  onSelect?: (tab: any) => void;
-  selectedTabIndex?: number; // this is used in the event you want to directly control the index changes.
-  canCollapse?: boolean;
+const TabPanelWrapper = styled(TabPanel)`
+  margin-top: 0;
+  height: calc(100% - ${LIST_HEADER_HEIGHT});
+
+  &.ads-v2-tabs__panel {
+    overflow: auto;
+  }
+
+  & .t--code-editor-wrapper.codeWrapper {
+    height: calc(100% - ${FOOTER_MARGIN});
+
+    & .CodeMirror-scroll {
+      box-sizing: border-box;
+    }
+  }
+`;
+
+const TabsListWrapper = styled(TabsList)`
+  && {
+    padding: var(--ads-v2-spaces-2);
+    padding-bottom: var(--ads-v2-spaces-1);
+  }
+`;
+
+export interface BottomTab {
+  key: string;
+  title: string;
+  count?: number;
+  panelComponent: React.ReactNode;
+}
+
+interface EntityBottomTabsProps {
+  className?: string;
+  tabs: Array<BottomTab>;
+  onSelect?: (tab: string) => void;
+  selectedTabKey: string;
+  isCollapsed?: boolean;
+}
+
+type CollapsibleEntityBottomTabsProps = EntityBottomTabsProps & {
   // Reference to container for collapsing or expanding content
-  containerRef?: RefObject<HTMLElement>;
-  // height of container when expanded
-  expandedHeight?: string;
+  containerRef: RefObject<HTMLDivElement>;
+  // height of container when expanded( usually the default height of the tab component)
+  expandedHeight: string;
 };
-
-type CollapsibleEntityBottomTabsProps = EntityBottomTabsProps &
-  CollapsibleTabProps;
-
-// Tab is considered collapsible only when all required collapsible props are present
-export const isCollapsibleEntityBottomTab = (
-  props: EntityBottomTabsProps | CollapsibleEntityBottomTabsProps,
-): props is CollapsibleEntityBottomTabsProps =>
-  collapsibleTabRequiredPropKeys.every((key) => key in props);
 
 // Using this if there are debugger related tabs
 function EntityBottomTabs(
   props: EntityBottomTabsProps | CollapsibleEntityBottomTabsProps,
 ) {
-  const [selectedIndex, setSelectedIndex] = useState(props.defaultIndex);
-  const currentTab = useSelector(getCurrentDebuggerTab);
-  const dispatch = useDispatch();
-  const onTabSelect = (index: number) => {
-    dispatch(setCurrentTab(props.tabs[index].key));
-    props.onSelect && props.onSelect(props.tabs[index]);
-    setIndex(index);
-  };
+  const onTabSelect = (key: string) => {
+    const tab = props.tabs.find((tab) => tab.key === key);
 
-  const setIndex = (index: number) => {
-    const tabKey = props.tabs[index]?.key;
-    setSelectedIndex(index);
-    if (Object.values<string>(DEBUGGER_TAB_KEYS).includes(tabKey)) {
-      AnalyticsUtil.logEvent("DEBUGGER_TAB_SWITCH", {
-        tabName: tabKey,
-      });
+    if (tab) {
+      props.onSelect && props.onSelect(tab.key);
+
+      if (Object.values<string>(DEBUGGER_TAB_KEYS).includes(tab.key)) {
+        AnalyticsUtil.logEvent("DEBUGGER_TAB_SWITCH", {
+          tabName: tab.key,
+        });
+      }
     }
   };
-
-  useEffect(() => {
-    const index = props.tabs.findIndex((tab) => tab.key === currentTab);
-    if (index >= 0) {
-      setIndex(index);
-    } else {
-      setIndex(props.defaultIndex);
-    }
-  }, [currentTab]);
 
   return (
-    <TabComponent
-      onSelect={onTabSelect}
-      responseViewer={props.responseViewer}
-      selectedIndex={
-        props.selectedTabIndex ? props.selectedTabIndex : selectedIndex
-      }
-      tabs={props.tabs}
-      {...(isCollapsibleEntityBottomTab(props)
-        ? {
-            containerRef: props.containerRef,
-            expandedHeight: props.expandedHeight,
-          }
-        : {})}
-    />
+    <Tabs
+      className="h-full"
+      defaultValue={props.selectedTabKey}
+      onValueChange={onTabSelect}
+      value={props.isCollapsed ? "" : props.selectedTabKey}
+    >
+      <TabsListWrapper>
+        {props.tabs.map((tab) => {
+          return (
+            <Tab
+              data-testid={"t--tab-" + tab.key}
+              id={`debugger-tab-${tab.key}`}
+              key={tab.key}
+              notificationCount={tab.count}
+              value={tab.key}
+            >
+              {tab.title}
+            </Tab>
+          );
+        })}
+      </TabsListWrapper>
+      {props.tabs.map((tab) => (
+        <TabPanelWrapper key={tab.key} value={tab.key}>
+          {tab.panelComponent}
+        </TabPanelWrapper>
+      ))}
+    </Tabs>
   );
 }
 

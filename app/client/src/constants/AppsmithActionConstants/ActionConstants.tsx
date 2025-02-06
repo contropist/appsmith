@@ -1,39 +1,46 @@
-import { ErrorActionPayload } from "sagas/ErrorSagas";
-import { ActionResponse } from "api/ActionAPI";
-import { PluginType } from "entities/Action";
+import type { ErrorActionPayload } from "sagas/ErrorSagas";
+import type { ActionResponse } from "api/ActionAPI";
+import { PluginType } from "entities/Plugin";
 import queryActionSettingsConfig from "constants/AppsmithActionConstants/formConfig/QuerySettingsConfig";
 import apiActionSettingsConfig from "constants/AppsmithActionConstants/formConfig/ApiSettingsConfig";
 import apiActionEditorConfig from "constants/AppsmithActionConstants/formConfig/ApiEditorConfigs";
 import saasActionSettingsConfig from "constants/AppsmithActionConstants/formConfig/GoogleSheetsSettingsConfig";
 import apiActionDependencyConfig from "constants/AppsmithActionConstants/formConfig/ApiDependencyConfigs";
 import apiActionDatasourceFormButtonConfig from "constants/AppsmithActionConstants/formConfig/ApiDatasourceFormsButtonConfig";
+import type { EntityTypeValue } from "ee/entities/DataTree/types";
 
-export type ExecuteActionPayloadEvent = {
+export interface ExecuteActionPayloadEvent {
   type: EventType;
   callback?: (result: ExecutionResult) => void;
-};
+}
 
-export type ExecutionResult = {
+export interface ExecutionResult {
   success: boolean;
-};
+}
 
-export type TriggerSource = {
+export interface TriggerSource {
   id: string;
   name: string;
+  entityType?: EntityTypeValue;
   collectionId?: string;
   isJSAction?: boolean;
   actionId?: string;
-};
+}
 
-export type ExecuteTriggerPayload = {
+export enum TriggerKind {
+  EVENT_EXECUTION = "EVENT_EXECUTION", // Eg. Button onClick
+  JS_FUNCTION_EXECUTION = "JS_FUNCTION_EXECUTION", // Executing js function from jsObject page
+}
+
+export interface ExecuteTriggerPayload {
   dynamicString: string;
   event: ExecuteActionPayloadEvent;
-  callbackData?: Array<any>;
+  callbackData?: Array<unknown>;
   triggerPropertyName?: string;
   source?: TriggerSource;
   widgetId?: string;
   globalContext?: Record<string, unknown>;
-};
+}
 
 export type ContentType =
   | "application/json"
@@ -65,6 +72,7 @@ export enum EventType {
   ON_TOGGLE = "ON_TOGGLE",
   ON_LOAD = "ON_LOAD",
   ON_MODAL_CLOSE = "ON_MODAL_CLOSE",
+  ON_MODAL_SUBMIT = "ON_MODAL_SUBMIT",
   ON_TEXT_CHANGE = "ON_TEXT_CHANGE",
   ON_SUBMIT = "ON_SUBMIT",
   ON_CHECK_CHANGE = "ON_CHECK_CHANGE",
@@ -72,6 +80,8 @@ export enum EventType {
   ON_SELECT = "ON_SELECT",
   ON_DATE_SELECTED = "ON_DATE_SELECTED",
   ON_DATE_RANGE_SELECTED = "ON_DATE_RANGE_SELECTED",
+  ON_DROPDOWN_OPEN = "ON_DROPDOWN_OPEN",
+  ON_DROPDOWN_CLOSE = "ON_DROPDOWN_CLOSE",
   ON_OPTION_CHANGE = "ON_OPTION_CHANGE",
   ON_FILTER_CHANGE = "ON_FILTER_CHANGE",
   ON_FILTER_UPDATE = "ON_FILTER_UPDATE",
@@ -106,6 +116,14 @@ export enum EventType {
   ON_ENTER_KEY_PRESS = "ON_ENTER_KEY_PRESS",
   ON_BLUR = "ON_BLUR",
   ON_FOCUS = "ON_FOCUS",
+  ON_BULK_SAVE = "ON_BULK_SAVE",
+  ON_BULK_DISCARD = "ON_BULK_DISCARD",
+  ON_ROW_SAVE = "ON_ROW_SAVE",
+  ON_ROW_DISCARD = "ON_ROW_DISCARD",
+  ON_CODE_DETECTED = "ON_CODE_DETECTED",
+  ON_ADD_NEW_ROW_SAVE = "ON_ADD_NEW_ROW_SAVE",
+  ON_ADD_NEW_ROW_DISCARD = "ON_ADD_NEW_ROW_DISCARD",
+  CUSTOM_WIDGET_EVENT = "CUSTOM_WIDGET_EVENT",
 }
 
 export interface PageAction {
@@ -124,14 +142,21 @@ export interface ExecuteErrorPayload extends ErrorActionPayload {
   data: ActionResponse;
 }
 
+export interface LayoutOnLoadActionErrors {
+  errorType: string;
+  code: number;
+  message: string;
+}
+
 // Group 1 = datasource (https://www.domain.com)
 // Group 2 = path (/nested/path)
 // Group 3 = params (?param=123&param2=12)
-export const urlGroupsRegexExp = /^(https?:\/{2}\S+?)(\/[\s\S]*?)?(\?(?![^{]*})[\s\S]*)?$/;
+export const DATASOURCE_URL_EXACT_MATCH_REGEX =
+  /^(https?:\/{2}\S+?)(\/[\s\S]*?)?(\?(?![^{]*})[\s\S]*)?$/;
 
 export const EXECUTION_PARAM_KEY = "executionParams";
 export const EXECUTION_PARAM_REFERENCE_REGEX = /this.params|this\?.params/g;
-export const THIS_DOT_PARAMS_KEY = "params";
+export const THIS_DOT_PARAMS_KEY = "$params";
 
 export const RESP_HEADER_DATATYPE = "X-APPSMITH-DATATYPE";
 export const API_REQUEST_HEADERS: APIHeaders = {
@@ -141,20 +166,30 @@ export const POSTMAN = "POSTMAN";
 export const CURL = "CURL";
 export const Swagger = "Swagger";
 
+// TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const defaultActionSettings: Record<PluginType, any> = {
   [PluginType.API]: apiActionSettingsConfig,
   [PluginType.DB]: queryActionSettingsConfig,
   [PluginType.SAAS]: saasActionSettingsConfig,
   [PluginType.REMOTE]: saasActionSettingsConfig,
   [PluginType.JS]: [],
+  [PluginType.AI]: saasActionSettingsConfig,
+  [PluginType.INTERNAL]: saasActionSettingsConfig,
+  [PluginType.EXTERNAL_SAAS]: saasActionSettingsConfig,
 };
 
+// TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const defaultActionEditorConfigs: Record<PluginType, any> = {
   [PluginType.API]: apiActionEditorConfig,
   [PluginType.DB]: [],
   [PluginType.SAAS]: [],
   [PluginType.REMOTE]: [],
   [PluginType.JS]: [],
+  [PluginType.AI]: [],
+  [PluginType.INTERNAL]: [],
+  [PluginType.EXTERNAL_SAAS]: [],
 };
 
 export const defaultActionDependenciesConfig: Record<
@@ -166,6 +201,9 @@ export const defaultActionDependenciesConfig: Record<
   [PluginType.SAAS]: {},
   [PluginType.REMOTE]: {},
   [PluginType.JS]: {},
+  [PluginType.AI]: {},
+  [PluginType.INTERNAL]: {},
+  [PluginType.EXTERNAL_SAAS]: {},
 };
 
 export const defaultDatasourceFormButtonConfig: Record<PluginType, string[]> = {
@@ -174,4 +212,7 @@ export const defaultDatasourceFormButtonConfig: Record<PluginType, string[]> = {
   [PluginType.SAAS]: apiActionDatasourceFormButtonConfig.SAAS,
   [PluginType.REMOTE]: apiActionDatasourceFormButtonConfig.REMOTE,
   [PluginType.JS]: [],
+  [PluginType.AI]: apiActionDatasourceFormButtonConfig.AI,
+  [PluginType.INTERNAL]: [],
+  [PluginType.EXTERNAL_SAAS]: apiActionDatasourceFormButtonConfig.EXTERNAL_SAAS,
 };

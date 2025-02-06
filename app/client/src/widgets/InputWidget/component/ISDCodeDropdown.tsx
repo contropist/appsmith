@@ -1,9 +1,10 @@
 import React from "react";
 import styled, { createGlobalStyle } from "styled-components";
-import Dropdown, { DropdownOption } from "components/ads/Dropdown";
-import Icon, { IconSize } from "components/ads/Icon";
+import type { DropdownOption } from "@design-system/widgets-old";
+import { Dropdown, Icon, IconSize } from "@design-system/widgets-old";
 import { countryToFlag } from "./utilities";
-import { ISDCodeOptions, ISDCodeProps } from "constants/ISDCodes";
+import type { ISDCodeProps } from "constants/ISDCodes";
+import { ISDCodeOptions } from "constants/ISDCodes";
 import { Colors } from "constants/Colors";
 import { Classes } from "@blueprintjs/core";
 import { lightenColor } from "widgets/WidgetUtils";
@@ -60,8 +61,8 @@ export const PopoverStyles = createGlobalStyle<{
     }
 
     .${props.portalClassName}  .${Classes.INPUT}:focus, .${
-    props.portalClassName
-  }  .${Classes.INPUT}:active {
+      props.portalClassName
+    }  .${Classes.INPUT}:active {
       border: 1px solid ${props.accentColor} !important;
       box-shadow:  0px 0px 0px 3px ${lightenColor(
         props.accentColor,
@@ -99,6 +100,7 @@ export const getSelectedISDCode = (code?: string): DropdownOption => {
         return item.code === code;
       })
     : undefined;
+
   if (!selectedCountry) {
     selectedCountry = {
       name: "United States",
@@ -106,6 +108,7 @@ export const getSelectedISDCode = (code?: string): DropdownOption => {
       code: "US",
     };
   }
+
   return {
     label: `${selectedCountry.name} (${selectedCountry.dial_code})`,
     searchText: selectedCountry.name,
@@ -140,9 +143,11 @@ export default function ISDCodeDropdown(props: ISDCodeDropdownProps) {
       <Icon className="dropdown" name="down-arrow" size={IconSize.XXS} />
     </DropdownTriggerIconWrapper>
   );
+
   if (props.disabled) {
     return dropdownTrigger;
   }
+
   return (
     <>
       <Dropdown

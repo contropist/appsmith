@@ -1,17 +1,15 @@
 package com.appsmith.server.solutions;
 
 import com.appsmith.server.dtos.ReleaseNode;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.junit4.SpringRunner;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@RunWith(SpringRunner.class)
 @SpringBootTest
 public class ReleaseNotesServiceTest {
 
@@ -20,12 +18,8 @@ public class ReleaseNotesServiceTest {
 
     @Test
     public void testComputeNewReleases() {
-        List<ReleaseNode> releaseNodes = releaseNotesService.getReleaseNodesCache();
-        releaseNodes.addAll(List.of(
-                new ReleaseNode("v3"),
-                new ReleaseNode("v2"),
-                new ReleaseNode("v1")
-        ));
+        List<ReleaseNode> releaseNodes = new ArrayList<>();
+        releaseNodes.addAll(List.of(new ReleaseNode("v3"), new ReleaseNode("v2"), new ReleaseNode("v1")));
 
         releaseNotesService.setReleaseNodesCache(releaseNodes);
 
@@ -34,5 +28,4 @@ public class ReleaseNotesServiceTest {
         assertThat(releaseNotesService.computeNewFrom("v1")).isEqualTo("2");
         assertThat(releaseNotesService.computeNewFrom("v0")).isEqualTo("2+");
     }
-
 }

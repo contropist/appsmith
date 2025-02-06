@@ -1,21 +1,45 @@
-import React from "react";
 import * as Sentry from "@sentry/react";
 
-import { MainContainerLayoutControl } from "../MainContainerLayoutControl";
-import ThemeEditor from "../ThemePropertyPane/ThemeEditor";
+import React from "react";
+import ConversionButton from "../CanvasLayoutConversion/ConversionButton";
+import styled from "styled-components";
+import {
+  LayoutSystemFeatures,
+  useLayoutSystemFeatures,
+} from "../../../layoutSystems/common/useLayoutSystemFeatures";
+import { MainContainerWidthToggles } from "../MainContainerWidthToggles";
+
+const Title = styled.p`
+  color: var(--ads-v2-color-fg);
+`;
+const MainHeading = styled.h3`
+  color: var(--ads-v2-color-fg-emphasis);
+`;
 
 export function CanvasPropertyPane() {
+  const checkLayoutSystemFeatures = useLayoutSystemFeatures();
+  const [enableLayoutControl, enableLayoutConversion] =
+    checkLayoutSystemFeatures([
+      LayoutSystemFeatures.ENABLE_CANVAS_LAYOUT_CONTROL,
+      LayoutSystemFeatures.ENABLE_LAYOUT_CONVERSION,
+    ]);
+
   return (
     <div className="relative ">
-      <h3 className="px-3 py-3 text-sm font-medium uppercase">Properties</h3>
+      <MainHeading className="px-4 py-3 text-sm font-medium">
+        Properties
+      </MainHeading>
 
       <div className="mt-3 space-y-6">
-        <div className="px-3 space-y-2">
-          <p className="text-sm text-gray-700">Canvas Size</p>
-          <MainContainerLayoutControl />
+        <div className="px-4 space-y-2">
+          {enableLayoutControl && (
+            <>
+              <Title className="text-sm">Canvas size</Title>
+              <MainContainerWidthToggles />
+            </>
+          )}
+          {enableLayoutConversion && <ConversionButton />}
         </div>
-
-        <ThemeEditor />
       </div>
     </div>
   );

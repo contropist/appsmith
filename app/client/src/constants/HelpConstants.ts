@@ -43,6 +43,10 @@ export const HelpMap: Record<string, { path: string; searchKey: string }> = {
     path: "/widget-reference/table",
     searchKey: "Table",
   },
+  TABLE_WIDGET_V2: {
+    path: "/widget-reference/table",
+    searchKey: "Table",
+  },
   VIDEO_WIDGET: {
     path: "/widget-reference/video",
     searchKey: "Video",
@@ -153,7 +157,7 @@ export const HelpMap: Record<string, { path: string; searchKey: string }> = {
   },
   MENU_BUTTON_WIDGET: {
     path: "/widget-reference/menu-button",
-    searchKey: "Menu Button",
+    searchKey: "Menu button",
   },
   TREE_MULTI_SELECT_WIDGET: {
     path: "/widget-reference/tree-multi-select",
@@ -165,7 +169,7 @@ export const HelpMap: Record<string, { path: string; searchKey: string }> = {
   },
   ICON_BUTTON_WIDGET: {
     path: "/widget-reference/icon-button",
-    searchKey: "Icon Button",
+    searchKey: "Icon button",
   },
   STATBOX_WIDGET: {
     path: "/widget-reference/statbox",
@@ -195,5 +199,4 @@ export const HelpMap: Record<string, { path: string; searchKey: string }> = {
 
 export const HelpBaseURL = "https://docs.appsmith.com";
 
-export const HELP_MODAL_WIDTH = 240;
-export const HELP_MODAL_HEIGHT = 206;
+export const HELP_MODAL_WIDTH = 170;
