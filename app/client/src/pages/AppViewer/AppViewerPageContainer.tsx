@@ -1,32 +1,25 @@
-import React, { useEffect, useMemo } from "react";
-import { Link, RouteComponentProps, withRouter } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
+import React, { useMemo } from "react";
+import type { RouteComponentProps } from "react-router-dom";
+import { Link, withRouter } from "react-router-dom";
+import { useSelector } from "react-redux";
 import { getIsFetchingPage } from "selectors/appViewSelectors";
 import styled from "styled-components";
-import { AppViewerRouteParams } from "constants/routes";
+import type { AppViewerRouteParams } from "constants/routes";
 import { theme } from "constants/DefaultTheme";
 import { Icon, NonIdealState, Spinner } from "@blueprintjs/core";
 import Centered from "components/designSystems/appsmith/CenteredWrapper";
 import AppPage from "./AppPage";
-import {
-  getCanvasWidgetDsl,
-  getCurrentPageName,
-  selectURLSlugs,
-} from "selectors/editorSelectors";
+import { getCanvasWidth, getCurrentPageName } from "selectors/editorSelectors";
 import RequestConfirmationModal from "pages/Editor/RequestConfirmationModal";
-import { getCurrentApplication } from "selectors/applicationSelectors";
-import {
-  isPermitted,
-  PERMISSION_TYPE,
-} from "../Applications/permissionHelpers";
-import { fetchPublishedPage } from "actions/pageActions";
-import { builderURL } from "RouteBuilder";
+import { getCurrentApplication } from "ee/selectors/applicationSelectors";
+import { isPermitted, PERMISSION_TYPE } from "ee/utils/permissionHelpers";
+import { builderURL } from "ee/RouteBuilder";
+import { getCanvasWidgetsStructure } from "ee/selectors/entitiesSelector";
+import equal from "fast-deep-equal/es6";
 
-const Section = styled.section<{
-  height: number;
-}>`
+const Section = styled.section`
   height: 100%;
-  min-height: ${({ height }) => height}px;
+  width: 100%;
   margin: 0 auto;
   position: relative;
   overflow-x: auto;
@@ -36,18 +29,12 @@ const Section = styled.section<{
 type AppViewerPageContainerProps = RouteComponentProps<AppViewerRouteParams>;
 
 function AppViewerPageContainer(props: AppViewerPageContainerProps) {
-  const dispatch = useDispatch();
   const currentPageName = useSelector(getCurrentPageName);
-  const widgets = useSelector(getCanvasWidgetDsl);
+  const widgetsStructure = useSelector(getCanvasWidgetsStructure, equal);
+  const canvasWidth = useSelector(getCanvasWidth);
   const isFetchingPage = useSelector(getIsFetchingPage);
   const currentApplication = useSelector(getCurrentApplication);
   const { match } = props;
-  const { pageId } = match.params;
-  const { applicationSlug, pageSlug } = useSelector(selectURLSlugs);
-
-  useEffect(() => {
-    pageId && dispatch(fetchPublishedPage(pageId, true));
-  }, [pageId, location.pathname]);
 
   // get appsmith editr link
   const appsmithEditorLink = useMemo(() => {
@@ -63,9 +50,7 @@ function AppViewerPageContainer(props: AppViewerPageContainerProps) {
           Please add widgets to this page in the&nbsp;
           <Link
             to={builderURL({
-              applicationSlug: applicationSlug,
-              pageSlug: pageSlug,
-              pageId: props.match.params.pageId as string,
+              basePageId: props.match.params.basePageId as string,
             })}
           >
             Appsmith Editor
@@ -99,15 +84,17 @@ function AppViewerPageContainer(props: AppViewerPageContainerProps) {
 
   if (isFetchingPage) return pageLoading;
 
-  if (!(widgets.children && widgets.children.length > 0)) return pageNotFound;
+  if (!(widgetsStructure.children && widgetsStructure.children.length > 0))
+    return pageNotFound;
 
   return (
-    <Section height={widgets.bottomRow}>
+    <Section>
       <AppPage
         appName={currentApplication?.name}
-        dsl={widgets}
-        pageId={match.params.pageId}
+        basePageId={match.params.basePageId}
+        canvasWidth={canvasWidth}
         pageName={currentPageName}
+        widgetsStructure={widgetsStructure}
       />
       <RequestConfirmationModal />
     </Section>

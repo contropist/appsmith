@@ -1,11 +1,11 @@
 package com.appsmith.server.services.ce;
 
-import com.appsmith.server.dtos.ActionDTO;
+import com.appsmith.external.models.ActionDTO;
 import com.appsmith.server.exceptions.AppsmithException;
 
 import java.util.List;
 
-public interface CurlImporterServiceCE extends ApiImporterCE{
+public interface CurlImporterServiceCE extends ApiImporterCE {
 
     ActionDTO curlToAction(String command, String name) throws AppsmithException;
 
@@ -16,5 +16,4 @@ public interface CurlImporterServiceCE extends ApiImporterCE{
     List<String> normalize(List<String> tokens);
 
     ActionDTO parse(List<String> tokens) throws AppsmithException;
-
 }

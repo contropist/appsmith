@@ -1,24 +1,101 @@
 import React from "react";
 
-import BaseWidget, { WidgetProps, WidgetState } from "widgets/BaseWidget";
-import { DerivedPropertiesMap } from "utils/WidgetFactory";
+import type { DerivedPropertiesMap } from "WidgetProvider/factory";
+import { DefaultAutocompleteDefinitions } from "widgets/WidgetUtils";
+import type { WidgetProps, WidgetState } from "widgets/BaseWidget";
+import BaseWidget from "widgets/BaseWidget";
 
+import { Colors } from "constants/Colors";
+import { ValidationTypes } from "constants/WidgetValidation";
+import type { SetterConfig, Stylesheet } from "entities/AppTheming";
 import ProgressComponent from "../component";
 import { ProgressType, ProgressVariant } from "../constants";
-import { ValidationTypes } from "constants/WidgetValidation";
-import { Colors } from "constants/Colors";
-
+import { isAutoLayout } from "layoutSystems/autolayout/utils/flexWidgetUtils";
+import type {
+  AnvilConfig,
+  AutocompletionDefinitions,
+} from "WidgetProvider/constants";
+import { WIDGET_TAGS } from "constants/WidgetConstants";
+import { ResponsiveBehavior } from "layoutSystems/common/utils/constants";
+import IconSVG from "../icon.svg";
+import ThumbnailSVG from "../thumbnail.svg";
 class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
-  static getPropertyPaneConfig() {
+  static type = "PROGRESS_WIDGET";
+
+  static getConfig() {
+    return {
+      name: "Progress", // The display name which will be made in uppercase and show in the widgets panel ( can have spaces )
+      iconSVG: IconSVG,
+      thumbnailSVG: ThumbnailSVG,
+      tags: [WIDGET_TAGS.CONTENT],
+      needsMeta: false, // Defines if this widget adds any meta properties
+      isCanvas: false, // Defines if this widget has a canvas within in which we can drop other widgets
+      searchTags: ["percent"],
+    };
+  }
+
+  static getDefaults() {
+    return {
+      widgetName: "Progress",
+      rows: 4,
+      columns: 28,
+      fillColor: Colors.GREEN,
+      isIndeterminate: false,
+      showResult: false,
+      counterClosewise: false,
+      isVisible: true,
+      steps: 1,
+      progressType: ProgressType.LINEAR,
+      progress: 50,
+      version: 1,
+      responsiveBehavior: ResponsiveBehavior.Fill,
+    };
+  }
+
+  static getAutoLayoutConfig() {
+    return {
+      disabledPropsDefaults: {
+        progressType: ProgressType.LINEAR,
+      },
+      widgetSize: [
+        {
+          viewportMinWidth: 0,
+          configuration: () => {
+            return {
+              minWidth: "120px",
+              minHeight: "40px",
+            };
+          },
+        },
+      ],
+      disableResizeHandles: {
+        vertical: true,
+      },
+    };
+  }
+
+  static getAnvilConfig(): AnvilConfig | null {
+    return {
+      isLargeWidget: false,
+      widgetSize: {
+        maxHeight: {},
+        maxWidth: {},
+        minHeight: { base: "40px" },
+        minWidth: { base: "120px" },
+      },
+    };
+  }
+
+  static getPropertyPaneContentConfig() {
     return [
       {
-        sectionName: "General",
+        sectionName: "Basic",
         children: [
           {
             helpText:
               "Determines if progress indicator will be determinate or not",
             propertyName: "isIndeterminate",
-            label: "Infinite Loading",
+            label: "Infinite loading",
             controlType: "SWITCH",
             isBindProperty: true,
             isTriggerProperty: false,
@@ -28,7 +105,8 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
             helpText: "Determines the shape of the progress indicator",
             propertyName: "progressType",
             label: "Type",
-            controlType: "DROP_DOWN",
+            controlType: "ICON_TABS",
+            fullWidth: true,
             options: [
               {
                 label: "Circular",
@@ -42,6 +120,7 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
             defaultValue: ProgressType.LINEAR,
             isBindProperty: false,
             isTriggerProperty: false,
+            hidden: isAutoLayout,
           },
           {
             helpText: "Sets the value of the progress indicator",
@@ -51,7 +130,6 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
             placeholderText: "Enter progress value",
             isBindProperty: true,
             isTriggerProperty: false,
-            isJSConvertible: true,
             defaultValue: 50,
             validation: {
               type: ValidationTypes.NUMBER,
@@ -60,6 +138,11 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
             hidden: (props: ProgressWidgetProps) => props.isIndeterminate,
             dependencies: ["isIndeterminate"],
           },
+        ],
+      },
+      {
+        sectionName: "General",
+        children: [
           {
             helpText: "Sets the number of steps",
             propertyName: "steps",
@@ -68,13 +151,28 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
             placeholderText: "Enter number of steps",
             isBindProperty: true,
             isTriggerProperty: false,
-            isJSConvertible: true,
             validation: {
               type: ValidationTypes.NUMBER,
-              params: { min: 1, max: 100, default: 1, natural: true },
+              params: {
+                min: 1,
+                max: 100,
+                default: 1,
+                natural: true,
+                passThroughOnZero: false,
+              },
             },
             hidden: (props: ProgressWidgetProps) => props.isIndeterminate,
             dependencies: ["isIndeterminate"],
+          },
+          {
+            helpText: "Controls the visibility of the widget",
+            propertyName: "isVisible",
+            label: "Visible",
+            controlType: "SWITCH",
+            isJSConvertible: true,
+            isBindProperty: true,
+            isTriggerProperty: false,
+            validation: { type: ValidationTypes.BOOLEAN },
           },
           {
             propertyName: "counterClockwise",
@@ -93,7 +191,7 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
             helpText:
               "Controls the visibility with the value of progress indicator",
             propertyName: "showResult",
-            label: "Show Result",
+            label: "Show result",
             controlType: "SWITCH",
             isJSConvertible: true,
             isBindProperty: true,
@@ -102,25 +200,30 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
             hidden: (props: ProgressWidgetProps) => props.isIndeterminate,
             dependencies: ["isIndeterminate"],
           },
-          {
-            helpText: "Controls the visibility of the widget",
-            propertyName: "isVisible",
-            label: "Visible",
-            controlType: "SWITCH",
-            isJSConvertible: true,
-            isBindProperty: true,
-            isTriggerProperty: false,
-            validation: { type: ValidationTypes.BOOLEAN },
-          },
         ],
       },
+    ];
+  }
+
+  static getAutocompleteDefinitions(): AutocompletionDefinitions {
+    return {
+      "!doc":
+        "Progress indicators commonly known as spinners, express an unspecified wait time or display the length of a process.",
+      "!url": "https://docs.appsmith.com/widget-reference/progress",
+      isVisible: DefaultAutocompleteDefinitions.isVisible,
+      progress: "number",
+    };
+  }
+
+  static getPropertyPaneStyleConfig() {
+    return [
       {
-        sectionName: "Styles",
+        sectionName: "Color",
         children: [
           {
             helpText: "Sets the color of the progress indicator",
             propertyName: "fillColor",
-            label: "Fill Color",
+            label: "Fill color",
             controlType: "COLOR_PICKER",
             defaultColor: Colors.GREEN,
             isBindProperty: true,
@@ -138,6 +241,13 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
     ];
   }
 
+  static getStylesheetConfig(): Stylesheet {
+    return {
+      fillColor: "{{appsmith.theme.colors.primaryColor}}",
+      borderRadius: "{{appsmith.theme.borderRadius.appBorderRadius}}",
+    };
+  }
+
   static getDerivedPropertiesMap(): DerivedPropertiesMap {
     return {};
   }
@@ -146,11 +256,28 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
     return {};
   }
 
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static getMetaPropertiesMap(): Record<string, any> {
     return {};
   }
 
-  getPageView() {
+  static getSetterConfig(): SetterConfig {
+    return {
+      __setters: {
+        setVisibility: {
+          path: "isVisible",
+          type: "boolean",
+        },
+        setProgress: {
+          path: "progress",
+          type: "number",
+        },
+      },
+    };
+  }
+
+  getWidgetView() {
     const {
       borderRadius,
       counterClockwise,
@@ -161,7 +288,7 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
       showResult,
       steps,
     } = this.props;
-    const { componentHeight, componentWidth } = this.getComponentDimensions();
+    const { componentHeight, componentWidth } = this.props;
     const isScaleY = componentHeight > componentWidth;
 
     return (
@@ -181,10 +308,6 @@ class ProgressWidget extends BaseWidget<ProgressWidgetProps, WidgetState> {
         }
       />
     );
-  }
-
-  static getWidgetType(): string {
-    return "PROGRESS_WIDGET";
   }
 }
 

@@ -1,16 +1,22 @@
 /* eslint-disable cypress/no-unnecessary-waiting */
 /* eslint-disable cypress/no-assigning-return-values */
 
+import { AppSidebar, AppSidebarButton } from "./Pages/EditorNavigation";
+
 require("cy-verify-downloads").addCustomCommand();
 require("cypress-file-upload");
-
-const {
-  addMatchImageSnapshotCommand,
-} = require("cypress-image-snapshot/command");
-const pages = require("../locators/Pages.json");
+import { ObjectsRegistry } from "../support/Objects/Registry";
+import { agHelper } from "./Objects/ObjectsCore";
 const datasourceEditor = require("../locators/DatasourcesEditor.json");
 const datasourceFormData = require("../fixtures/datasources.json");
-const explorer = require("../locators/explorerlocators.json");
+const apiWidgetslocator = require("../locators/apiWidgetslocator.json");
+const apiEditorLocators = require("../locators/ApiEditor");
+const dataSources = ObjectsRegistry.DataSources;
+
+const backgroundColorBlack = "rgb(76, 86, 100)";
+const backgroundColorGray1 = "rgb(241, 245, 249)";
+const backgroundColorGray2 = "rgba(0, 0, 0, 0)";
+const backgroundColorGray8 = "rgb(106, 117, 133)";
 
 export const initLocalstorage = () => {
   cy.window().then((window) => {
@@ -19,85 +25,22 @@ export const initLocalstorage = () => {
   });
 };
 
-Cypress.Commands.add("firestoreDatasourceForm", () => {
-  cy.get(datasourceEditor.datasourceConfigUrl).type(
-    datasourceFormData["database-url"],
-  );
-  cy.get(datasourceEditor.projectID).type(datasourceFormData["projectID"]);
-  cy.get(datasourceEditor.serviceAccCredential)
-    .clear()
-    .type(datasourceFormData["serviceAccCredentials"]);
-});
-
-Cypress.Commands.add("amazonDatasourceForm", () => {
-  cy.get(datasourceEditor.projectID).type(datasourceFormData["access_key"]);
-  cy.get(datasourceEditor.serviceAccCredential)
-    .clear()
-    .type(datasourceFormData["secret_key"]);
-});
-
-Cypress.Commands.add("testSaveDeleteDatasource", () => {
-  // Instead of deleting the last datasource on the active datasources list,
-  // we delete the datasource that was just created (identified by its title)
-  cy.get(datasourceEditor.datasourceTitle)
-    .invoke("text")
-    .then((datasourceTitle) => {
-      // test datasource
-      cy.get(".t--test-datasource").click();
-      cy.wait("@testDatasource");
-      // .should("have.nested.property", "response.body.data.success", true)
-      //  .debug();
-
-      // save datasource
-      cy.get(".t--save-datasource").click();
-      cy.wait("@saveDatasource").should(
-        "have.nested.property",
-        "response.body.responseMeta.status",
-        200,
-      );
-      // select datasource to be deleted by datasource title
-      cy.get(`${datasourceEditor.datasourceCard}`)
-        .contains(datasourceTitle)
-        .last()
-        .click();
-      // delete datasource
-      cy.get(".t--delete-datasource").click();
-      cy.get(".t--delete-datasource")
-        .contains("Are you sure?")
-        .click();
-      cy.wait("@deleteDatasource").should(
-        "have.nested.property",
-        "response.body.responseMeta.status",
-        200,
-      );
-    });
-});
-
 Cypress.Commands.add("NavigateToDatasourceEditor", () => {
-  cy.get(explorer.addDBQueryEntity)
-    .last()
-    .click({ force: true });
-  cy.get(pages.integrationCreateNew)
-    .should("be.visible")
-    .click({ force: true });
+  dataSources.NavigateToDSCreateNew();
 });
 
 Cypress.Commands.add("testDatasource", (expectedRes = true) => {
   cy.get(".t--test-datasource").click({ force: true });
-  cy.wait("@testDatasource").should(
-    "have.nested.property",
-    "response.body.data.success",
-    expectedRes,
-  );
+  cy.wait("@testDatasource")
+    .its("response.body.data.success")
+    .should("eq", expectedRes);
 });
 
 Cypress.Commands.add("saveDatasource", () => {
   cy.get(".t--save-datasource").click({ force: true });
   cy.wait("@saveDatasource")
-    .then((xhr) => {
-      cy.log(JSON.stringify(xhr.response.body));
-    })
-    .should("have.nested.property", "response.body.responseMeta.status", 200);
+    .its("response.body.responseMeta.status")
+    .should("eq", 201);
 });
 
 Cypress.Commands.add("testSaveDatasource", (expectedRes = true) => {
@@ -109,38 +52,6 @@ Cypress.Commands.add("testSaveDatasource", (expectedRes = true) => {
 });
 
 Cypress.Commands.add(
-  "fillMongoDatasourceForm",
-  (shouldAddTrailingSpaces = false) => {
-    const hostAddress = shouldAddTrailingSpaces
-      ? datasourceFormData["mongo-host"] + "  "
-      : datasourceFormData["mongo-host"];
-    // const databaseName = shouldAddTrailingSpaces
-    //   ? datasourceFormData["mongo-databaseName"] + "  "
-    //   : datasourceFormData["mongo-databaseName"];
-    cy.get(datasourceEditor["host"]).type(hostAddress);
-    cy.get(datasourceEditor.port).type(datasourceFormData["mongo-port"]);
-    //cy.get(datasourceEditor["port"]).type(datasourceFormData["mongo-port"]);
-    //cy.get(datasourceEditor["selConnectionType"]).click();
-    //cy.contains(datasourceFormData["connection-type"]).click();
-    //cy.get(datasourceEditor["defaultDatabaseName"]).type(databaseName);//is optional hence removing
-    cy.get(datasourceEditor.sectionAuthentication).click();
-    cy.get(datasourceEditor["databaseName"])
-      .clear()
-      .type(datasourceFormData["mongo-databaseName"]);
-    // cy.get(datasourceEditor["username"]).type(
-    //   datasourceFormData["mongo-username"],
-    // );
-    // cy.get(datasourceEditor["password"]).type(
-    //   datasourceFormData["mongo-password"],
-    // );
-    // cy.get(datasourceEditor["authenticationAuthtype"]).click();
-    // cy.contains(datasourceFormData["mongo-authenticationAuthtype"]).click({
-    //   force: true,
-    // });
-  },
-);
-
-Cypress.Commands.add(
   "fillPostgresDatasourceForm",
   (shouldAddTrailingSpaces = false) => {
     const hostAddress = shouldAddTrailingSpaces
@@ -150,18 +61,46 @@ Cypress.Commands.add(
       ? datasourceFormData["postgres-databaseName"] + "  "
       : datasourceFormData["postgres-databaseName"];
 
-    cy.get(datasourceEditor.host).type(hostAddress);
-    cy.get(datasourceEditor.port).type(datasourceFormData["postgres-port"]);
-    cy.get(datasourceEditor.databaseName)
-      .clear()
-      .type(databaseName);
-    cy.get(datasourceEditor.sectionAuthentication).click();
-    cy.get(datasourceEditor.username).type(
+    agHelper.ClearNType(datasourceEditor.host, hostAddress);
+    agHelper.ClearNType(
+      datasourceEditor.port,
+      datasourceFormData["postgres-port"],
+    );
+    agHelper.ClearNType(datasourceEditor.databaseName, databaseName);
+    agHelper.ClearNType(
+      datasourceEditor.username,
       datasourceFormData["postgres-username"],
     );
-    cy.get(datasourceEditor.password).type(
+    agHelper.ClearNType(
+      datasourceEditor.password,
       datasourceFormData["postgres-password"],
     );
+  },
+);
+
+Cypress.Commands.add(
+  "fillElasticDatasourceForm",
+  (shouldAddTrailingSpaces = false) => {
+    // we are using postgresql data for elastic search,
+    // in the future, this should be changed, just for testing purposes
+    const hostAddress = "https://localhost";
+    const headerValue = "Bearer token";
+
+    agHelper.ClearNType(datasourceEditor.host, hostAddress);
+    agHelper.ClearNType(
+      datasourceEditor.port,
+      datasourceFormData["postgres-port"],
+    );
+    cy.get(datasourceEditor.sectionAuthentication).click();
+    agHelper.ClearNType(
+      datasourceEditor.username,
+      datasourceFormData["postgres-username"],
+    );
+    agHelper.ClearNType(
+      datasourceEditor.password,
+      datasourceFormData["postgres-password"],
+    );
+    agHelper.ClearNType(datasourceEditor.headers, headerValue);
   },
 );
 
@@ -175,17 +114,18 @@ Cypress.Commands.add(
       ? datasourceFormData["mysql-databaseName"] + "  "
       : datasourceFormData["mysql-databaseName"];
 
-    cy.get(datasourceEditor.host).type(hostAddress);
-    cy.get(datasourceEditor.port).type(datasourceFormData["mysql-port"]);
-    cy.get(datasourceEditor.databaseName)
-      .clear()
-      .type(databaseName);
-
-    cy.get(datasourceEditor.sectionAuthentication).click();
-    cy.get(datasourceEditor.username).type(
+    agHelper.ClearNType(datasourceEditor.host, hostAddress);
+    agHelper.ClearNType(
+      datasourceEditor.port,
+      datasourceFormData["mysql-port"],
+    );
+    agHelper.ClearNType(datasourceEditor.databaseName, databaseName);
+    agHelper.ClearNType(
+      datasourceEditor.username,
       datasourceFormData["mysql-username"],
     );
-    cy.get(datasourceEditor.password).type(
+    agHelper.ClearNType(
+      datasourceEditor.password,
       datasourceFormData["mysql-password"],
     );
   },
@@ -201,17 +141,18 @@ Cypress.Commands.add(
       ? datasourceFormData["mssql-databaseName"] + "  "
       : datasourceFormData["mssql-databaseName"];
 
-    cy.get(datasourceEditor.host).type(hostAddress);
-    cy.get(datasourceEditor.port).type(datasourceFormData["mssql-port"]);
-    cy.get(datasourceEditor.databaseName)
-      .clear()
-      .type(databaseName);
-
-    cy.get(datasourceEditor.sectionAuthentication).click();
-    cy.get(datasourceEditor.username).type(
+    agHelper.ClearNType(datasourceEditor.host, hostAddress);
+    agHelper.ClearNType(
+      datasourceEditor.port,
+      datasourceFormData["mssql-port"],
+    );
+    agHelper.ClearNType(datasourceEditor.databaseName, databaseName);
+    agHelper.ClearNType(
+      datasourceEditor.username,
       datasourceFormData["mssql-username"],
     );
-    cy.get(datasourceEditor.password).type(
+    agHelper.ClearNType(
+      datasourceEditor.password,
       datasourceFormData["mssql-password"],
     );
   },
@@ -227,17 +168,18 @@ Cypress.Commands.add(
       ? datasourceFormData["arango-databaseName"] + "  "
       : datasourceFormData["arango-databaseName"];
 
-    cy.get(datasourceEditor.host).type(hostAddress);
-    cy.get(datasourceEditor.port).type(datasourceFormData["arango-port"]);
-    cy.get(datasourceEditor.databaseName)
-      .clear()
-      .type(databaseName);
-
-    cy.get(datasourceEditor.sectionAuthentication).click();
-    cy.get(datasourceEditor.username).type(
+    agHelper.ClearNType(datasourceEditor.host, hostAddress);
+    agHelper.ClearNType(
+      datasourceEditor.port,
+      datasourceFormData["arango-port"],
+    );
+    agHelper.ClearNType(datasourceEditor.databaseName, databaseName);
+    agHelper.ClearNType(
+      datasourceEditor.username,
       datasourceFormData["arango-username"],
     );
-    cy.get(datasourceEditor.password).type(
+    agHelper.ClearNType(
+      datasourceEditor.password,
       datasourceFormData["arango-password"],
     );
   },
@@ -253,93 +195,58 @@ Cypress.Commands.add(
       ? datasourceFormData["redshift-databaseName"] + "  "
       : datasourceFormData["redshift-databaseName"];
 
-    cy.get(datasourceEditor.host).type(hostAddress);
-    cy.get(datasourceEditor.port).type(datasourceFormData["redshift-port"]);
-    cy.get(datasourceEditor.databaseName)
-      .clear()
-      .type(databaseName);
-
-    cy.get(datasourceEditor.sectionAuthentication).click();
-    cy.get(datasourceEditor.username).type(
+    agHelper.ClearNType(datasourceEditor.host, hostAddress);
+    agHelper.ClearNType(
+      datasourceEditor.port,
+      datasourceFormData["redshift-port"],
+    );
+    agHelper.ClearNType(datasourceEditor.databaseName, databaseName);
+    agHelper.ClearNType(
+      datasourceEditor.username,
       datasourceFormData["redshift-username"],
     );
-    cy.get(datasourceEditor.password).type(
+    agHelper.ClearNType(
+      datasourceEditor.password,
       datasourceFormData["redshift-password"],
     );
   },
 );
 
 Cypress.Commands.add(
-  "fillUsersMockDatasourceForm",
-  (shouldAddTrailingSpaces = false) => {
-    const userMockDatabaseName = shouldAddTrailingSpaces
-      ? `${datasourceFormData["mockDatabaseName"] + "    "}`
-      : datasourceFormData["mockDatabaseName"];
-
-    const userMockHostAddress = shouldAddTrailingSpaces
-      ? `${datasourceFormData["mockHostAddress"] + "    "}`
-      : datasourceFormData["mockHostAddress"];
-
-    const userMockDatabaseUsername = shouldAddTrailingSpaces
-      ? `${datasourceFormData["mockDatabaseUsername"] + "    "}`
-      : datasourceFormData["mockDatabaseUsername"];
-
-    cy.get(datasourceEditor["host"])
-      .clear()
-      .type(userMockHostAddress);
-
-    cy.get(datasourceEditor["databaseName"])
-      .clear()
-      .type(userMockDatabaseName);
-
-    cy.get(datasourceEditor["sectionAuthentication"]).click();
-
-    cy.get(datasourceEditor["password"])
-      .clear()
-      .type(datasourceFormData["mockDatabasePassword"]);
-
-    cy.get(datasourceEditor["username"])
-      .clear()
-      .type(userMockDatabaseUsername);
-  },
-);
-Cypress.Commands.add(
   "fillSMTPDatasourceForm",
   (shouldAddTrailingSpaces = false) => {
     const hostAddress = shouldAddTrailingSpaces
       ? datasourceFormData["smtp-host"] + "  "
       : datasourceFormData["smtp-host"];
-    cy.get(datasourceEditor.host).type(hostAddress);
-    cy.get(datasourceEditor.port).type(datasourceFormData["smtp-port"]);
+    agHelper.ClearNType(datasourceEditor.host, hostAddress);
+    agHelper.ClearNType(datasourceEditor.port, datasourceFormData["smtp-port"]);
     cy.get(datasourceEditor.sectionAuthentication).click();
-    cy.get(datasourceEditor.username).type(datasourceFormData["smtp-username"]);
-    cy.get(datasourceEditor.password).type(datasourceFormData["smtp-password"]);
+    agHelper.ClearNType(
+      datasourceEditor.username,
+      datasourceFormData["smtp-username"],
+    );
+    agHelper.ClearNType(
+      datasourceEditor.password,
+      datasourceFormData["smtp-password"],
+    );
   },
 );
 
 Cypress.Commands.add("createPostgresDatasource", () => {
-  cy.NavigateToDatasourceEditor();
-  cy.get(datasourceEditor.PostgreSQL).click();
-  //cy.getPluginFormsAndCreateDatasource();
+  dataSources.NavigateToDSCreateNew();
+  agHelper.GetNClick(datasourceEditor.PostgreSQL);
   cy.fillPostgresDatasourceForm();
   cy.testSaveDatasource();
 });
 
+// this can be modified further when google sheets automation is done.
+Cypress.Commands.add("createGoogleSheetsDatasource", () => {
+  dataSources.NavigateToDSCreateNew();
+  agHelper.GetNClick(datasourceEditor.GoogleSheets);
+});
+
 Cypress.Commands.add("deleteDatasource", (datasourceName) => {
-  cy.NavigateToQueryEditor();
-  cy.get(pages.integrationActiveTab)
-    .should("be.visible")
-    .click({ force: true });
-  cy.contains(".t--datasource-name", datasourceName).click();
-  cy.get(".t--delete-datasource").click();
-  cy.get(".t--delete-datasource")
-    .contains("Are you sure?")
-    .click();
-  cy.wait("@deleteDatasource").should(
-    "have.nested.property",
-    "response.body.responseMeta.status",
-    200,
-  );
+  dataSources.DeleteDatasourceFromWithinDS(datasourceName);
 });
 
 Cypress.Commands.add("renameDatasource", (datasourceName) => {
@@ -352,33 +259,95 @@ Cypress.Commands.add("renameDatasource", (datasourceName) => {
 });
 
 Cypress.Commands.add("fillAmazonS3DatasourceForm", () => {
-  cy.get(datasourceEditor.projectID)
-    .clear()
-    .type(Cypress.env("S3_ACCESS_KEY"));
-  cy.get(datasourceEditor.serviceAccCredential)
-    .clear()
-    .type(Cypress.env("S3_SECRET_KEY"));
-});
-
-Cypress.Commands.add("createAmazonS3Datasource", () => {
-  cy.NavigateToDatasourceEditor();
-  cy.get(datasourceEditor.AmazonS3).click();
-  cy.fillAmazonS3DatasourceForm();
-  cy.testSaveDatasource();
-});
-
-Cypress.Commands.add("fillMongoDatasourceFormWithURI", () => {
-  cy.xpath(datasourceEditor["mongoUriDropdown"])
-    .click()
-    .wait(500);
-  cy.xpath(datasourceEditor["mongoUriYes"])
-    .click()
-    .wait(500);
-  cy.xpath(datasourceEditor["mongoUriInput"]).type(
-    datasourceFormData["mongo-uri"],
+  agHelper.ClearNType(datasourceEditor.projectID, Cypress.env("S3_ACCESS_KEY"));
+  agHelper.ClearNType(
+    datasourceEditor.serviceAccCredential,
+    Cypress.env("S3_SECRET_KEY"),
   );
 });
 
 Cypress.Commands.add("ReconnectDatasource", (datasource) => {
   cy.xpath(`//span[text()='${datasource}']`).click();
+});
+
+Cypress.Commands.add("createNewAuthApiDatasource", (renameVal) => {
+  cy.NavigateToAPI_Panel();
+  //Click on Authenticated API
+  cy.get(apiWidgetslocator.createAuthApiDatasource).click();
+  //Verify weather Authenticated API is successfully created.
+  // cy.wait("@saveDatasource").should(
+  //   "have.nested.property",
+  //   "response.body.responseMeta.status",
+  //   201,
+  // );
+  cy.get(datasourceEditor.datasourceTitleLocator).click();
+  cy.get(`${datasourceEditor.datasourceTitleLocator} input`)
+    .clear()
+    .type(renameVal, { force: true })
+    .blur();
+  //Fill dummy inputs and save
+  cy.fillAuthenticatedAPIForm();
+  cy.saveDatasource();
+  // Added because api name edit takes some time to
+  // reflect in api sidebar after the call passes.
+  // eslint-disable-next-line cypress/no-unnecessary-waiting
+  cy.wait(2000);
+});
+
+Cypress.Commands.add("datasourceCardContainerStyle", (tag) => {
+  cy.get(tag)
+    .should("have.css", "min-width", "150px")
+    .and(($el) => {
+      const borderRadius = $el.css("border-radius");
+      expect(borderRadius).to.match(/^(0px|4px)$/);
+    })
+    .and("have.css", "align-items", "center");
+});
+
+Cypress.Commands.add("datasourceCardStyle", (tag) => {
+  cy.get(tag)
+    .should("have.css", "display", "flex")
+    .and("have.css", "align-items", "center")
+    .and("have.css", "gap", "12px")
+    .realHover()
+    .should("have.css", "background-color", backgroundColorGray1)
+    .and("have.css", "cursor", "pointer");
+});
+
+Cypress.Commands.add("datasourceImageStyle", (tag) => {
+  cy.get(tag)
+    .should("have.css", "height", "34px")
+    .and("have.css", "max-width", "100%");
+});
+
+Cypress.Commands.add("datasourceContentWrapperStyle", (tag) => {
+  cy.get(tag)
+    .should("have.css", "display", "flex")
+    .and("have.css", "align-items", "flex-start")
+    .and("have.css", "gap", "normal");
+});
+
+Cypress.Commands.add("datasourceIconWrapperStyle", (tag) => {
+  cy.get(tag)
+    .should("have.css", "background-color", backgroundColorGray2)
+    .and("have.css", "height", "34px")
+    .and("have.css", "border-radius", "0px")
+    .and("have.css", "display", "block")
+    .and("have.css", "align-items", "normal");
+});
+
+Cypress.Commands.add("datasourceNameStyle", (tag) => {
+  cy.get(tag)
+    .should("have.css", "color", backgroundColorBlack)
+    .and("have.css", "font-size", "16px")
+    .and("have.css", "font-weight", "400")
+    .and("have.css", "line-height", "20px");
+});
+
+Cypress.Commands.add("mockDatasourceDescriptionStyle", (tag) => {
+  cy.get(tag)
+    .should("have.css", "color", backgroundColorGray8)
+    .and("have.css", "font-size", "13px")
+    .and("have.css", "font-weight", "400")
+    .and("have.css", "line-height", "17px");
 });

@@ -1,3 +1,4 @@
+import type { ActionPattern, CallEffect, ForkEffect } from "redux-saga/effects";
 import {
   actionChannel,
   all,
@@ -10,171 +11,317 @@ import {
   take,
 } from "redux-saga/effects";
 
-import {
-  EvaluationReduxAction,
-  AnyReduxAction,
+import type {
   ReduxAction,
   ReduxActionType,
-  ReduxActionTypes,
-} from "@appsmith/constants/ReduxActionConstants";
+  AnyReduxAction,
+} from "actions/ReduxActionTypes";
+import { ReduxActionTypes } from "ee/constants/ReduxActionConstants";
 import {
   getDataTree,
   getUnevaluatedDataTree,
 } from "selectors/dataTreeSelectors";
-import { getWidgets } from "sagas/selectors";
-import WidgetFactory, { WidgetTypeConfigMap } from "utils/WidgetFactory";
-import { GracefulWorkerService } from "utils/WorkerUtil";
-import Worker from "worker-loader!../workers/evaluation.worker";
-import {
-  EVAL_WORKER_ACTIONS,
-  PropertyEvaluationErrorType,
-} from "utils/DynamicBindingUtils";
+import { getMetaWidgets, getWidgets, getWidgetsMeta } from "sagas/selectors";
+import type { WidgetTypeConfigMap } from "WidgetProvider/factory";
+import WidgetFactory from "WidgetProvider/factory";
+import { evalWorker } from "utils/workerInstances";
+import type { EvalError, EvaluationError } from "utils/DynamicBindingUtils";
+import { PropertyEvaluationErrorType } from "utils/DynamicBindingUtils";
+import { EVAL_WORKER_ACTIONS } from "ee/workers/Evaluation/evalWorkerActions";
 import log from "loglevel";
-import { WidgetProps } from "widgets/BaseWidget";
-import PerformanceTracker, {
-  PerformanceTransactionName,
-} from "utils/PerformanceTracker";
+import type { WidgetProps } from "widgets/BaseWidget";
 import * as Sentry from "@sentry/react";
-import { Action } from "redux";
+import type { Action } from "redux";
 import {
-  EVALUATE_REDUX_ACTIONS,
+  EVAL_AND_LINT_REDUX_ACTIONS,
   FIRST_EVAL_REDUX_ACTIONS,
+  getRequiresLinting,
+} from "ee/actions/evaluationActionsList";
+import {
   setDependencyMap,
   setEvaluatedTree,
-  shouldProcessBatchedAction,
+  shouldForceEval,
+  shouldLog,
+  shouldProcessAction,
+  shouldTriggerEvaluation,
 } from "actions/evaluationActions";
+import ConfigTreeActions from "utils/configTree";
 import {
-  evalErrorHandler,
+  showExecutionErrors,
+  handleJSFunctionExecutionErrorLog,
+  logJSVarCreatedEvent,
   logSuccessfulBindings,
   postEvalActionDispatcher,
   updateTernDefinitions,
 } from "./PostEvaluationSagas";
-import { JSAction } from "entities/JSCollection";
-import { getAppMode } from "selectors/applicationSelectors";
+import type { JSAction, JSCollection } from "entities/JSCollection";
+import { getAppMode } from "ee/selectors/applicationSelectors";
 import { APP_MODE } from "entities/App";
-import { get, isUndefined } from "lodash";
+import { get, isEmpty } from "lodash";
+import type { TriggerMeta } from "ee/sagas/ActionExecution/ActionExecutionSagas";
+import { executeActionTriggers } from "ee/sagas/ActionExecution/ActionExecutionSagas";
 import {
-  setEvaluatedArgument,
-  setEvaluatedSnippet,
-  setGlobalSearchFilterContext,
-} from "actions/globalSearchActions";
-import {
-  executeActionTriggers,
-  TriggerMeta,
-} from "./ActionExecution/ActionExecutionSagas";
-import { EventType } from "constants/AppsmithActionConstants/ActionConstants";
-import { Toaster } from "components/ads/Toast";
-import { Variant } from "components/ads/common";
-import {
-  createMessage,
-  SNIPPET_EXECUTION_FAILED,
-  SNIPPET_EXECUTION_SUCCESS,
-} from "@appsmith/constants/messages";
-import { validate } from "workers/validations";
-import { diff } from "deep-diff";
+  EventType,
+  TriggerKind,
+} from "constants/AppsmithActionConstants/ActionConstants";
+import { validate } from "workers/Evaluation/validations";
 import { REPLAY_DELAY } from "entities/Replay/replayUtils";
-import { EvaluationVersion } from "api/ApplicationApi";
-import { makeUpdateJSCollection } from "sagas/JSPaneSagas";
-import { ENTITY_TYPE } from "entities/AppsmithConsole";
-import { Replayable } from "entities/Replay/ReplayEntity/ReplayEditor";
-import {
-  logActionExecutionError,
-  UncaughtPromiseError,
-} from "sagas/ActionExecution/errorUtils";
-import { Channel } from "redux-saga";
-import { ActionDescription } from "entities/DataTree/actionTriggers";
-import { FormEvaluationState } from "reducers/evaluationReducers/formEvaluationReducer";
-import { FormEvalActionPayload } from "./FormEvaluationSaga";
+import type { EvaluationVersion } from "constants/EvalConstants";
+
+import type { LogObject } from "entities/AppsmithConsole";
+import { ENTITY_TYPE } from "ee/entities/AppsmithConsole/utils";
+import type { Replayable } from "entities/Replay/ReplayEntity/ReplayEditor";
+import type { FormEvaluationState } from "reducers/evaluationReducers/formEvaluationReducer";
+import type { FormEvalActionPayload } from "./FormEvaluationSaga";
 import { getSelectedAppTheme } from "selectors/appThemingSelectors";
-import { updateMetaState } from "actions/metaActions";
-import { getAllActionValidationConfig } from "selectors/entitiesSelector";
+import { resetWidgetsMetaState, updateMetaState } from "actions/metaActions";
+import {
+  getAllActionValidationConfig,
+  getAllJSActionsData,
+} from "ee/selectors/entitiesSelector";
+import type { WidgetEntityConfig } from "ee/entities/DataTree/types";
+import type {
+  ConfigTree,
+  DataTree,
+  UnEvalTree,
+} from "entities/DataTree/dataTreeTypes";
+import { initiateLinting, lintWorker } from "./LintingSagas";
+import type {
+  EvalTreeRequestData,
+  EvalTreeResponseData,
+} from "workers/Evaluation/types";
+import type { ActionDescription } from "ee/workers/Evaluation/fns";
+import { handleEvalWorkerRequestSaga } from "./EvalWorkerActionSagas";
+import { getAppsmithConfigs } from "ee/configs";
+import {
+  type actionDataPayload,
+  type updateActionDataPayloadType,
+} from "actions/pluginActionActions";
+import { executeJSUpdates } from "actions/jsPaneActions";
+import { setEvaluatedActionSelectorField } from "actions/actionSelectorActions";
+import { waitForWidgetConfigBuild } from "./InitSagas";
+import { logDynamicTriggerExecution } from "ee/sagas/analyticsSaga";
+import { selectFeatureFlags } from "ee/selectors/featureFlagsSelectors";
+import { fetchFeatureFlagsInit } from "actions/userActions";
+import {
+  getAffectedJSObjectIdsFromAction,
+  parseUpdatesAndDeleteUndefinedUpdates,
+} from "./EvaluationsSagaUtils";
+import { getFeatureFlagsFetched } from "selectors/usersSelectors";
+import { getIsCurrentEditorWorkflowType } from "ee/selectors/workflowSelectors";
+import { evalErrorHandler } from "./EvalErrorHandler";
+import AnalyticsUtil from "ee/utils/AnalyticsUtil";
+import { endSpan, startRootSpan } from "instrumentation/generateTraces";
+import { transformTriggerEvalErrors } from "ee/sagas/helpers";
+import {
+  getApplicationLastDeployedAt,
+  getCurrentApplicationId,
+  getCurrentPageId,
+} from "selectors/editorSelectors";
+import { getInstanceId } from "ee/selectors/tenantSelectors";
+import type {
+  AffectedJSObjects,
+  EvaluationReduxAction,
+} from "actions/EvaluationReduxActionTypes";
+
+const APPSMITH_CONFIGS = getAppsmithConfigs();
 
 let widgetTypeConfigMap: WidgetTypeConfigMap;
 
-const worker = new GracefulWorkerService(Worker);
-
-function* evaluateTreeSaga(
+export function* updateDataTreeHandler(
+  data: {
+    evalTreeResponse: EvalTreeResponseData;
+    unevalTree: UnEvalTree;
+    requiresLogging: boolean;
+    configTree: ConfigTree;
+  },
   postEvalActions?: Array<AnyReduxAction>,
-  shouldReplay?: boolean,
 ) {
-  const allActionValidationConfig = yield select(getAllActionValidationConfig);
-  const unevalTree = yield select(getUnevaluatedDataTree);
-  const widgets = yield select(getWidgets);
-  const theme = yield select(getSelectedAppTheme);
-
-  log.debug({ unevalTree });
-  PerformanceTracker.startAsyncTracking(
-    PerformanceTransactionName.DATA_TREE_EVALUATION,
-  );
-  const workerResponse = yield call(
-    worker.request,
-    EVAL_WORKER_ACTIONS.EVAL_TREE,
-    {
-      unevalTree,
-      widgetTypeConfigMap,
-      widgets,
-      theme,
-      shouldReplay,
-      allActionValidationConfig,
-    },
-  );
+  const { configTree, evalTreeResponse, requiresLogging, unevalTree } = data;
+  const postEvalActionsToDispatch: Array<AnyReduxAction> =
+    postEvalActions || [];
 
   const {
-    dataTree,
     dependencies,
     errors,
+    evalMetaUpdates = [],
     evaluationOrder,
+    isCreateFirstTree = false,
+    isNewWidgetAdded,
     jsUpdates,
+    jsVarsCreatedEvent,
     logs,
+    removedPaths,
+    staleMetaIds,
+    undefinedEvalValuesMap,
     unEvalUpdates,
-  } = workerResponse;
-  PerformanceTracker.stopAsyncTracking(
-    PerformanceTransactionName.DATA_TREE_EVALUATION,
-  );
-  PerformanceTracker.startAsyncTracking(
-    PerformanceTransactionName.SET_EVALUATED_TREE,
-  );
-  const oldDataTree = yield select(getDataTree);
+    updates,
+  } = evalTreeResponse;
 
-  const updates = diff(oldDataTree, dataTree) || [];
+  const appMode: ReturnType<typeof getAppMode> = yield select(getAppMode);
 
-  yield put(setEvaluatedTree(dataTree, updates));
-  PerformanceTracker.stopAsyncTracking(
-    PerformanceTransactionName.SET_EVALUATED_TREE,
-  );
+  if (!isEmpty(staleMetaIds)) {
+    yield put(resetWidgetsMetaState(staleMetaIds));
+  }
 
-  yield put(updateMetaState(updates, dataTree));
+  const parsedUpdates = parseUpdatesAndDeleteUndefinedUpdates(updates);
 
-  const updatedDataTree = yield select(getDataTree);
+  yield put(setEvaluatedTree(parsedUpdates));
+
+  ConfigTreeActions.setConfigTree(configTree);
+
+  // if evalMetaUpdates are present only then dispatch updateMetaState
+  if (evalMetaUpdates.length) {
+    yield put(updateMetaState(evalMetaUpdates));
+  }
+
+  log.debug({ evalMetaUpdatesLength: evalMetaUpdates.length });
+
+  const updatedDataTree: DataTree = yield select(getDataTree);
+
   log.debug({ jsUpdates: jsUpdates });
   log.debug({ dataTree: updatedDataTree });
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   logs?.forEach((evalLog: any) => log.debug(evalLog));
-  yield call(evalErrorHandler, errors, updatedDataTree, evaluationOrder);
-  const appMode = yield select(getAppMode);
-  if (appMode !== APP_MODE.PUBLISHED) {
-    yield call(makeUpdateJSCollection, jsUpdates);
-    yield fork(
-      logSuccessfulBindings,
-      unevalTree,
-      updatedDataTree,
-      evaluationOrder,
-    );
 
-    yield fork(updateTernDefinitions, updatedDataTree, unEvalUpdates);
+  yield call(
+    evalErrorHandler,
+    errors,
+    updatedDataTree,
+    evaluationOrder,
+    configTree,
+    removedPaths,
+  );
+  AnalyticsUtil.setBlockErrorLogs(isCreateFirstTree);
+
+  if (appMode !== APP_MODE.PUBLISHED) {
+    const jsData: Record<string, unknown> = yield select(getAllJSActionsData);
+
+    postEvalActionsToDispatch.push(executeJSUpdates(jsUpdates));
+
+    if (requiresLogging) {
+      yield fork(
+        logSuccessfulBindings,
+        unevalTree,
+        updatedDataTree,
+        evaluationOrder,
+        isCreateFirstTree,
+        isNewWidgetAdded,
+        configTree,
+        undefinedEvalValuesMap,
+      );
+    }
+
+    yield fork(
+      updateTernDefinitions,
+      updatedDataTree,
+      configTree,
+      unEvalUpdates,
+      isCreateFirstTree,
+      jsData,
+    );
   }
 
   yield put(setDependencyMap(dependencies));
-  if (postEvalActions && postEvalActions.length) {
-    yield call(postEvalActionDispatcher, postEvalActions);
+
+  if (postEvalActionsToDispatch && postEvalActionsToDispatch.length) {
+    yield call(postEvalActionDispatcher, postEvalActionsToDispatch);
   }
+
+  yield call(logJSVarCreatedEvent, jsVarsCreatedEvent);
+}
+
+/**
+ * This saga is responsible for evaluating the data tree
+ * @param postEvalActions
+ * @param shouldReplay
+ * @param requiresLinting
+ * @param forceEvaluation - if true, will re-evaluate the entire tree
+ * @returns
+ * @example
+ * yield call(evaluateTreeSaga, postEvalActions, shouldReplay, requiresLinting, forceEvaluation)
+ */
+export function* evaluateTreeSaga(
+  unEvalAndConfigTree: ReturnType<typeof getUnevaluatedDataTree>,
+  postEvalActions?: Array<AnyReduxAction>,
+  shouldReplay = true,
+  forceEvaluation = false,
+  requiresLogging = false,
+  affectedJSObjects: AffectedJSObjects = defaultAffectedJSObjects,
+  actionDataPayloadConsolidated?: actionDataPayload,
+) {
+  const allActionValidationConfig: ReturnType<
+    typeof getAllActionValidationConfig
+  > = yield select(getAllActionValidationConfig);
+  const unevalTree = unEvalAndConfigTree.unEvalTree;
+  const widgets: ReturnType<typeof getWidgets> = yield select(getWidgets);
+  const metaWidgets: ReturnType<typeof getMetaWidgets> =
+    yield select(getMetaWidgets);
+  const theme: ReturnType<typeof getSelectedAppTheme> =
+    yield select(getSelectedAppTheme);
+
+  log.debug({ unevalTree, configTree: unEvalAndConfigTree.configTree });
+  const instanceId: string = yield select(getInstanceId);
+  const applicationId: string = yield select(getCurrentApplicationId);
+  const pageId: string = yield select(getCurrentPageId);
+  const lastDeployedAt: string = yield select(getApplicationLastDeployedAt);
+  const appMode: ReturnType<typeof getAppMode> = yield select(getAppMode);
+  const widgetsMeta: ReturnType<typeof getWidgetsMeta> =
+    yield select(getWidgetsMeta);
+
+  const shouldRespondWithLogs = log.getLevel() === log.levels.DEBUG;
+
+  const evalTreeRequestData: EvalTreeRequestData = {
+    cacheProps: {
+      appMode,
+      appId: applicationId,
+      pageId,
+      timestamp: lastDeployedAt,
+      instanceId,
+    },
+    unevalTree: unEvalAndConfigTree,
+    widgetTypeConfigMap,
+    widgets,
+    theme,
+    shouldReplay,
+    allActionValidationConfig,
+    forceEvaluation,
+    metaWidgets,
+    appMode,
+    widgetsMeta,
+    shouldRespondWithLogs,
+    affectedJSObjects,
+    actionDataPayloadConsolidated,
+  };
+
+  const workerResponse: EvalTreeResponseData = yield call(
+    evalWorker.request,
+    EVAL_WORKER_ACTIONS.EVAL_TREE,
+    evalTreeRequestData,
+  );
+
+  yield call(
+    updateDataTreeHandler,
+    {
+      evalTreeResponse: workerResponse,
+      unevalTree,
+      configTree: unEvalAndConfigTree.configTree,
+      requiresLogging,
+    },
+    postEvalActions,
+  );
 }
 
 export function* evaluateActionBindings(
   bindings: string[],
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   executionParams: Record<string, any> | string = {},
 ) {
-  const workerResponse = yield call(
-    worker.request,
+  const span = startRootSpan("evaluateActionBindings");
+  const workerResponse: { errors: EvalError[]; values: unknown } = yield call(
+    evalWorker.request,
     EVAL_WORKER_ACTIONS.EVAL_ACTION_BINDINGS,
     {
       bindings,
@@ -185,86 +332,61 @@ export function* evaluateActionBindings(
   const { errors, values } = workerResponse;
 
   yield call(evalErrorHandler, errors);
+  endSpan(span);
+
   return values;
 }
 
-/*
- * Used to evaluate and execute dynamic trigger end to end
- * Widget action fields and JS Object run triggers this flow
- *
- * We start a duplex request with the worker and wait till the time we get a 'finished' event from the
- * worker. Worker will evaluate a block of code and ask the main thread to execute it. The result of this
- * execution is returned to the worker where it can resolve/reject the current promise.
- */
 export function* evaluateAndExecuteDynamicTrigger(
   dynamicTrigger: string,
   eventType: EventType,
   triggerMeta: TriggerMeta,
-  callbackData?: Array<any>,
+  callbackData?: Array<unknown>,
   globalContext?: Record<string, unknown>,
 ) {
-  const unEvalTree = yield select(getUnevaluatedDataTree);
-  log.debug({ execute: dynamicTrigger });
+  const rootSpan = startRootSpan("DataTreeFactory.create");
 
-  const { requestChannel, responseChannel } = yield call(
-    worker.duplexRequest,
-    EVAL_WORKER_ACTIONS.EVAL_TRIGGER,
-    { dataTree: unEvalTree, dynamicTrigger, callbackData, globalContext },
+  const unEvalTree: ReturnType<typeof getUnevaluatedDataTree> = yield select(
+    getUnevaluatedDataTree,
   );
-  let keepAlive = true;
 
-  while (keepAlive) {
-    const { requestData } = yield take(requestChannel);
-    log.debug({ requestData });
-    if (requestData.finished) {
-      keepAlive = false;
-      /* Handle errors during evaluation
-       * A finish event with errors means that the error was not caught by the user code.
-       * We raise an error telling the user that an uncaught error has occurred
-       * */
-      if (requestData.result.errors.length) {
-        if (
-          requestData.result.errors[0].errorMessage !==
-          "UncaughtPromiseRejection: User cancelled action execution"
-        ) {
-          throw new UncaughtPromiseError(
-            requestData.result.errors[0].errorMessage,
-          );
-        }
-      }
-      // It is possible to get a few triggers here if the user
-      // still uses the old way of action runs and not promises. For that we
-      // need to manually execute these triggers outside the promise flow
-      const { triggers } = requestData.result;
-      if (triggers && triggers.length) {
-        log.debug({ triggers });
-        yield all(
-          triggers.map((trigger: ActionDescription) =>
-            call(executeActionTriggers, trigger, eventType, triggerMeta),
-          ),
-        );
-      }
-      // Return value of a promise is returned
-      return requestData.result;
-    }
-    yield call(evalErrorHandler, requestData.errors);
-    if (requestData.trigger) {
-      // if we have found a trigger, we need to execute it and respond back
-      log.debug({ trigger: requestData.trigger });
-      yield spawn(
-        executeTriggerRequestSaga,
-        requestData,
-        eventType,
-        responseChannel,
-        triggerMeta,
-      );
-    }
+  endSpan(rootSpan);
+
+  log.debug({ execute: dynamicTrigger });
+  const response: { errors: EvaluationError[]; result: unknown } = yield call(
+    evalWorker.request,
+    EVAL_WORKER_ACTIONS.EVAL_TRIGGER,
+    {
+      unEvalTree,
+      dynamicTrigger,
+      callbackData,
+      globalContext,
+      eventType,
+      triggerMeta,
+    },
+  );
+  const { errors = [] } = response;
+
+  const transformedErrors: EvaluationError[] = yield call(
+    transformTriggerEvalErrors,
+    errors,
+  );
+
+  if (transformedErrors.length) {
+    yield fork(showExecutionErrors, transformedErrors);
   }
+
+  yield fork(logDynamicTriggerExecution, {
+    dynamicTrigger,
+    errors: transformedErrors,
+    triggerMeta,
+  });
+
+  return response;
 }
 
-interface ResponsePayload {
+export interface ResponsePayload {
   data: {
-    subRequestId: string;
     reason?: string;
     resolve?: unknown;
   };
@@ -275,99 +397,194 @@ interface ResponsePayload {
  * It is necessary to respond back as the worker is waiting with a pending promise and wanting to know if it should
  * resolve or reject it with the data the execution has provided
  */
-function* executeTriggerRequestSaga(
-  requestData: { trigger: ActionDescription; subRequestId: string },
+export function* executeTriggerRequestSaga(
+  trigger: ActionDescription,
   eventType: EventType,
-  responseChannel: Channel<unknown>,
   triggerMeta: TriggerMeta,
 ) {
-  const responsePayload: ResponsePayload = {
-    data: {
-      resolve: undefined,
-      reason: undefined,
-      subRequestId: requestData.subRequestId,
-    },
-    success: false,
+  const responsePayload = {
+    data: null,
+    error: null,
   };
+
   try {
-    responsePayload.data.resolve = yield call(
+    responsePayload.data = yield call(
       executeActionTriggers,
-      requestData.trigger,
+      trigger,
       eventType,
       triggerMeta,
     );
-    responsePayload.success = true;
-  } catch (e) {
+  } catch (error) {
     // When error occurs in execution of triggers,
     // a success: false is sent to reject the promise
-    responsePayload.data.reason = e;
-    responsePayload.success = false;
+    // @ts-expect-error: reason is of type string
+    responsePayload.error = {
+      // @ts-expect-error: reason is of type string
+      message: error.responseData?.[0] || error.message,
+    };
   }
-  responseChannel.put({
-    method: EVAL_WORKER_ACTIONS.PROCESS_TRIGGER,
-    ...responsePayload,
-  });
+
+  return responsePayload;
 }
 
 export function* clearEvalCache() {
-  yield call(worker.request, EVAL_WORKER_ACTIONS.CLEAR_CACHE);
+  /**
+   * Reset cache in worker before resetting the dataTree
+   * This order is important because there could be pending evaluation requests that are being processed by the worker
+   * The diffs generated by the already queued eval request when applied to a reset data tree will cause unexpected crash.
+   */
+  yield call(evalWorker.request, EVAL_WORKER_ACTIONS.CLEAR_CACHE);
+  yield put({ type: ReduxActionTypes.RESET_DATA_TREE });
 
   return true;
 }
 
-export function* executeFunction(collectionName: string, action: JSAction) {
+interface JSFunctionExecutionResponse {
+  errors: unknown[];
+  result: unknown;
+  logs?: LogObject[];
+}
+
+function* executeAsyncJSFunction(
+  action: JSAction,
+  collection: JSCollection,
+  onPageLoad: boolean,
+) {
+  const { id: collectionId, name: collectionName } = collection;
   const functionCall = `${collectionName}.${action.name}()`;
-  const { isAsync } = action.actionConfiguration;
-  let response;
-  if (isAsync) {
-    try {
-      response = yield call(
-        evaluateAndExecuteDynamicTrigger,
-        functionCall,
-        EventType.ON_JS_FUNCTION_EXECUTE,
-        {},
-      );
-    } catch (e) {
-      if (e instanceof UncaughtPromiseError) {
-        logActionExecutionError(e.message);
-      }
-      response = { errors: [e], result: undefined };
-    }
-  } else {
-    response = yield call(worker.request, EVAL_WORKER_ACTIONS.EXECUTE_SYNC_JS, {
-      functionCall,
-    });
+  const triggerMeta = {
+    source: {
+      id: collectionId,
+      name: `${collectionName}.${action.name}`,
+      type: ENTITY_TYPE.JSACTION,
+    },
+    triggerPropertyName: `${collectionName}.${action.name}`,
+    triggerKind: TriggerKind.JS_FUNCTION_EXECUTION,
+    onPageLoad: onPageLoad,
+  };
+  const eventType = EventType.ON_JS_FUNCTION_EXECUTE;
+  const response: JSFunctionExecutionResponse = yield call(
+    evaluateAndExecuteDynamicTrigger,
+    functionCall,
+    eventType,
+    triggerMeta,
+  );
+
+  return response;
+}
+
+export function* executeJSFunction(
+  action: JSAction,
+  collection: JSCollection,
+  onPageLoad: boolean,
+) {
+  const response: {
+    errors: unknown[];
+    result: unknown;
+    logs?: LogObject[];
+  } = yield call(executeAsyncJSFunction, action, collection, onPageLoad);
+  const { errors, result } = response;
+  const isDirty = !!errors.length;
+
+  // After every function execution, log execution errors if present
+  yield call(handleJSFunctionExecutionErrorLog, action, collection, errors);
+
+  return { result, isDirty, errors };
+}
+
+export // TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function* validateProperty(property: string, value: any, props: WidgetProps) {
+  const rootSpan = startRootSpan("DataTreeFactory.create");
+
+  const unEvalAndConfigTree: ReturnType<typeof getUnevaluatedDataTree> =
+    yield select(getUnevaluatedDataTree);
+
+  endSpan(rootSpan);
+  const configTree = unEvalAndConfigTree.configTree;
+  const entityConfig = configTree[props.widgetName] as WidgetEntityConfig;
+  const validation = entityConfig?.validationPaths[property];
+  const response: unknown = yield call(
+    evalWorker.request,
+    EVAL_WORKER_ACTIONS.VALIDATE_PROPERTY,
+    {
+      property,
+      value,
+      props,
+      validation,
+    },
+  );
+
+  return response;
+}
+
+// We are clubbing all pending action's affected JS objects into the buffered action
+// So that during that evaluation cycle all affected JS objects are correctly diffed
+function mergeJSBufferedActions(
+  prevAffectedJSAction: AffectedJSObjects,
+  newAffectedJSAction: AffectedJSObjects,
+) {
+  if (prevAffectedJSAction.isAllAffected || newAffectedJSAction.isAllAffected) {
+    return {
+      isAllAffected: true,
+      ids: [],
+    };
   }
 
-  const { errors, result } = response;
-  yield call(evalErrorHandler, errors);
-  return result;
+  return {
+    isAllAffected: false,
+    ids: [...prevAffectedJSAction.ids, ...newAffectedJSAction.ids],
+  };
 }
 
-export function* validateProperty(
-  property: string,
-  value: any,
-  props: WidgetProps,
-) {
-  const unevalTree = yield select(getUnevaluatedDataTree);
-  const validation = unevalTree[props.widgetName].validationPaths[property];
-  return yield call(worker.request, EVAL_WORKER_ACTIONS.VALIDATE_PROPERTY, {
-    property,
-    value,
-    props,
-    validation,
-  });
+export const defaultAffectedJSObjects: AffectedJSObjects = {
+  isAllAffected: false,
+  ids: [],
+};
+
+export interface BUFFERED_ACTION {
+  hasDebouncedHandleUpdate: boolean;
+  hasBufferedAction: boolean;
+  actionDataPayloadConsolidated: actionDataPayload[];
 }
 
-function evalQueueBuffer() {
+export function evalQueueBuffer() {
   let canTake = false;
+  let hasDebouncedHandleUpdate = false;
+  let hasBufferedAction = false;
+  let actionDataPayloadConsolidated: actionDataPayload = [];
+
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let collectedPostEvalActions: any = [];
+  let collectedAffectedJSObjects: AffectedJSObjects = defaultAffectedJSObjects;
+
   const take = () => {
     if (canTake) {
       const resp = collectedPostEvalActions;
+
       collectedPostEvalActions = [];
+      const affectedJSObjects = collectedAffectedJSObjects;
+
+      collectedAffectedJSObjects = defaultAffectedJSObjects;
       canTake = false;
-      return { postEvalActions: resp, type: "BUFFERED_ACTION" };
+      const actionDataPayloadConsolidatedRes = actionDataPayloadConsolidated;
+
+      const hasDebouncedHandleUpdateRes = hasDebouncedHandleUpdate;
+      const hasBufferedActionRes = hasBufferedAction;
+
+      actionDataPayloadConsolidated = [];
+      hasDebouncedHandleUpdate = false;
+      hasBufferedAction = false;
+
+      return {
+        hasDebouncedHandleUpdate: hasDebouncedHandleUpdateRes,
+        hasBufferedAction: hasBufferedActionRes,
+        actionDataPayloadConsolidated: actionDataPayloadConsolidatedRes,
+        postEvalActions: resp,
+        affectedJSObjects,
+        type: ReduxActionTypes.BUFFERED_ACTION,
+      };
     }
   };
   const flush = () => {
@@ -379,12 +596,41 @@ function evalQueueBuffer() {
   };
 
   const put = (action: EvaluationReduxAction<unknown | unknown[]>) => {
-    if (!shouldProcessBatchedAction(action)) {
+    if (!shouldProcessAction(action)) {
       return;
     }
+
+    if (action.type === ReduxActionTypes.UPDATE_ACTION_DATA) {
+      const { actionDataPayload } =
+        action.payload as updateActionDataPayloadType;
+
+      if (actionDataPayload && actionDataPayload.length) {
+        actionDataPayloadConsolidated = [
+          ...actionDataPayloadConsolidated,
+          ...actionDataPayload,
+        ];
+      }
+
+      hasDebouncedHandleUpdate = true;
+      canTake = true;
+
+      return;
+    }
+
+    hasBufferedAction = true;
+
     canTake = true;
+    // extract the affected JS action ids from the action and pass them
+    //  as a part of the buffered action
+    const affectedJSObjects = getAffectedJSObjectIdsFromAction(action);
+
+    collectedAffectedJSObjects = mergeJSBufferedActions(
+      collectedAffectedJSObjects,
+      affectedJSObjects,
+    );
 
     const postEvalActions = getPostEvalActions(action);
+
     collectedPostEvalActions.push(...postEvalActions);
   };
 
@@ -407,9 +653,11 @@ function getPostEvalActions(
   action: EvaluationReduxAction<unknown | unknown[]>,
 ): AnyReduxAction[] {
   const postEvalActions: AnyReduxAction[] = [];
+
   if (action.postEvalActions) {
     postEvalActions.push(...action.postEvalActions);
   }
+
   if (
     action.type === ReduxActionTypes.BATCH_UPDATES_SUCCESS &&
     Array.isArray(action.payload)
@@ -422,123 +670,245 @@ function getPostEvalActions(
       }
     });
   }
+
   return postEvalActions;
 }
 
-function* evaluationChangeListenerSaga() {
+export function* evalAndLintingHandler(
+  isBlockingCall = true,
+  action: ReduxAction<unknown>,
+  options: Partial<{
+    shouldReplay: boolean;
+    forceEvaluation: boolean;
+    requiresLogging: boolean;
+    affectedJSObjects: AffectedJSObjects;
+    actionDataPayloadConsolidated: actionDataPayload[];
+  }>,
+) {
+  const span = startRootSpan("evalAndLintingHandler");
+  const {
+    actionDataPayloadConsolidated,
+    affectedJSObjects,
+    forceEvaluation,
+    requiresLogging,
+    shouldReplay,
+  } = options;
+
+  const requiresLinting = getRequiresLinting(action);
+
+  const requiresEval = shouldTriggerEvaluation(action);
+
+  log.debug({
+    action,
+    triggeredLinting: requiresLinting,
+    triggeredEvaluation: requiresEval,
+  });
+
+  if (!requiresEval && !requiresLinting) {
+    endSpan(span);
+
+    return;
+  }
+
+  const rootSpan = startRootSpan("DataTreeFactory.create");
+
+  // Generate all the data needed for both eval and linting
+  const unEvalAndConfigTree: ReturnType<typeof getUnevaluatedDataTree> =
+    yield select(getUnevaluatedDataTree);
+
+  endSpan(rootSpan);
+
+  const postEvalActions = getPostEvalActions(action);
+  const fn: (...args: unknown[]) => CallEffect<unknown> | ForkEffect<unknown> =
+    isBlockingCall ? call : fork;
+
+  const effects = [];
+
+  if (requiresEval) {
+    effects.push(
+      fn(
+        evaluateTreeSaga,
+        unEvalAndConfigTree,
+        postEvalActions,
+        shouldReplay,
+        forceEvaluation,
+        requiresLogging,
+        affectedJSObjects,
+        actionDataPayloadConsolidated,
+      ),
+    );
+  }
+
+  if (requiresLinting) {
+    effects.push(fn(initiateLinting, unEvalAndConfigTree, forceEvaluation));
+  }
+
+  yield all(effects);
+  endSpan(span);
+}
+
+// TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function* evaluationChangeListenerSaga(): any {
+  const firstEvalActionChannel = yield actionChannel(FIRST_EVAL_REDUX_ACTIONS);
+
   // Explicitly shutdown old worker if present
-  yield call(worker.shutdown);
-  yield call(worker.start);
-  yield call(worker.request, EVAL_WORKER_ACTIONS.SETUP);
+  yield all([call(evalWorker.shutdown), call(lintWorker.shutdown)]);
+  const [evalWorkerListenerChannel] = yield all([
+    call(evalWorker.start),
+    call(lintWorker.start),
+  ]);
+
+  const isFFFetched = yield select(getFeatureFlagsFetched);
+
+  if (!isFFFetched) {
+    yield call(fetchFeatureFlagsInit);
+    yield take(ReduxActionTypes.FETCH_FEATURE_FLAGS_SUCCESS);
+  }
+
+  const featureFlags: Record<string, boolean> =
+    yield select(selectFeatureFlags);
+
+  yield call(evalWorker.request, EVAL_WORKER_ACTIONS.SETUP, {
+    cloudHosting: !!APPSMITH_CONFIGS.cloudHosting,
+    featureFlags: featureFlags,
+  });
+  yield spawn(handleEvalWorkerRequestSaga, evalWorkerListenerChannel);
+
+  const initAction: EvaluationReduxAction<unknown> = yield take(
+    firstEvalActionChannel,
+  );
+
+  firstEvalActionChannel.close();
+
+  // Wait for widget config build to complete before starting evaluation only if the current editor is not a workflow
+  const isCurrentEditorWorkflowType = yield select(
+    getIsCurrentEditorWorkflowType,
+  );
+
+  if (!isCurrentEditorWorkflowType) {
+    yield call(waitForWidgetConfigBuild);
+  }
+
   widgetTypeConfigMap = WidgetFactory.getWidgetTypeConfigMap();
-  const initAction = yield take(FIRST_EVAL_REDUX_ACTIONS);
-  yield fork(evaluateTreeSaga, initAction.postEvalActions);
-  const evtActionChannel = yield actionChannel(
-    EVALUATE_REDUX_ACTIONS,
+  yield fork(evalAndLintingHandler, false, initAction, {
+    shouldReplay: false,
+    forceEvaluation: false,
+    // during startup all JS objects are affected
+    affectedJSObjects: {
+      ids: [],
+      isAllAffected: true,
+    },
+  });
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const evtActionChannel: ActionPattern<Action<any>> = yield actionChannel(
+    EVAL_AND_LINT_REDUX_ACTIONS,
     evalQueueBuffer(),
   );
+
+  yield call(evaluationLoopWithDebounce, evtActionChannel);
+}
+
+export function* evaluationLoopWithDebounce(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  evtActionChannel: ActionPattern<Action<any>>,
+) {
   while (true) {
-    const action: EvaluationReduxAction<unknown | unknown[]> = yield take(
-      evtActionChannel,
-    );
+    const action: EvaluationReduxAction<unknown | unknown[]> =
+      yield take(evtActionChannel);
 
-    if (shouldProcessBatchedAction(action)) {
-      const postEvalActions = getPostEvalActions(action);
+    const { payload, type } = action;
+
+    if (type === ReduxActionTypes.UPDATE_ACTION_DATA) {
       yield call(
-        evaluateTreeSaga,
-        postEvalActions,
-        get(action, "payload.shouldReplay"),
+        evalWorker.request,
+        EVAL_WORKER_ACTIONS.UPDATE_ACTION_DATA,
+        (payload as updateActionDataPayloadType).actionDataPayload,
       );
+      continue;
+    }
+
+    if (type !== ReduxActionTypes.BUFFERED_ACTION) {
+      const affectedJSObjects = getAffectedJSObjectIdsFromAction(action);
+
+      yield call(evalAndLintingHandler, true, action, {
+        shouldReplay: get(action, "payload.shouldReplay"),
+        forceEvaluation: shouldForceEval(action),
+        requiresLogging: shouldLog(action),
+        affectedJSObjects,
+      });
+      continue;
+    }
+
+    // all buffered debounced actions are handled here
+    const {
+      actionDataPayloadConsolidated,
+      hasBufferedAction,
+      hasDebouncedHandleUpdate,
+    } = action as unknown as BUFFERED_ACTION;
+
+    // when there are both debounced action updates evaluation and a regular evaluation
+    // we will convert that to a regular evaluation this should help in performance by
+    // not performing a debounced action updates evaluation
+    if (hasDebouncedHandleUpdate && hasBufferedAction) {
+      const affectedJSObjects = getAffectedJSObjectIdsFromAction(action);
+
+      yield call(evalAndLintingHandler, true, action, {
+        actionDataPayloadConsolidated,
+        shouldReplay: get(action, "payload.shouldReplay"),
+        forceEvaluation: shouldForceEval(action),
+        requiresLogging: shouldLog(action),
+        affectedJSObjects,
+      });
+
+      continue;
+    }
+
+    if (hasDebouncedHandleUpdate) {
+      yield call(
+        evalWorker.request,
+        EVAL_WORKER_ACTIONS.UPDATE_ACTION_DATA,
+        actionDataPayloadConsolidated,
+      );
+    }
+
+    if (hasBufferedAction) {
+      // We are dequing actions from the buffer and inferring the JS actions affected by each
+      // action. Through this we know ahead the nodes we need to specifically diff, thereby improving performance.
+      const affectedJSObjects = getAffectedJSObjectIdsFromAction(action);
+
+      yield call(evalAndLintingHandler, true, action, {
+        shouldReplay: get(action, "payload.shouldReplay"),
+        forceEvaluation: shouldForceEval(action),
+        requiresLogging: shouldLog(action),
+        affectedJSObjects,
+      });
     }
   }
 }
 
-export function* evaluateSnippetSaga(action: any) {
+// TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function* evaluateActionSelectorFieldSaga(action: any) {
+  const { id, type, value } = action.payload;
+
   try {
-    let { expression } = action.payload;
-    const { dataType, isTrigger } = action.payload;
-    if (isTrigger) {
-      expression = `function() { ${expression} }`;
-    }
     const workerResponse: {
-      errors: any;
-      result: any;
-      triggers: any;
-    } = yield call(worker.request, EVAL_WORKER_ACTIONS.EVAL_EXPRESSION, {
-      expression,
-      dataType,
-      isTrigger,
+      errors: Array<unknown>;
+      result: unknown;
+    } = yield call(evalWorker.request, EVAL_WORKER_ACTIONS.EVAL_EXPRESSION, {
+      expression: value,
     });
-    const { errors, result, triggers } = workerResponse;
-    if (triggers && triggers.length > 0) {
-      yield all(
-        triggers.map((trigger: any) =>
-          call(
-            executeActionTriggers,
-            trigger,
-            EventType.ON_SNIPPET_EXECUTE,
-            {},
-          ),
-        ),
-      );
-      //Result is when trigger is present. Following code will hide the evaluated snippet section
-      yield put(setEvaluatedSnippet(result));
-    } else {
-      /*
-        JSON.stringify(undefined) is undefined.
-        We need to set it manually to "undefined" for codeEditor to display it.
-      */
-      yield put(
-        setEvaluatedSnippet(
-          errors?.length
-            ? JSON.stringify(errors, null, 2)
-            : isUndefined(result)
-            ? "undefined"
-            : JSON.stringify(result),
-        ),
-      );
-    }
-    Toaster.show({
-      text: createMessage(
-        errors?.length ? SNIPPET_EXECUTION_FAILED : SNIPPET_EXECUTION_SUCCESS,
-      ),
-      variant: errors?.length ? Variant.danger : Variant.success,
-    });
-    yield put(
-      setGlobalSearchFilterContext({
-        executionInProgress: false,
-      }),
-    );
-  } catch (e) {
-    yield put(
-      setGlobalSearchFilterContext({
-        executionInProgress: false,
-      }),
-    );
-    Toaster.show({
-      text: createMessage(SNIPPET_EXECUTION_FAILED),
-      variant: Variant.danger,
-    });
-    log.error(e);
-    Sentry.captureException(e);
-  }
-}
-
-export function* evaluateArgumentSaga(action: any) {
-  const { name, type, value } = action.payload;
-  try {
-    const workerResponse = yield call(
-      worker.request,
-      EVAL_WORKER_ACTIONS.EVAL_EXPRESSION,
-      {
-        expression: value,
-      },
-    );
     const lintErrors = (workerResponse.errors || []).filter(
+      // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (error: any) => error.errorType !== PropertyEvaluationErrorType.LINT,
     );
+
     if (workerResponse.result) {
       const validation = validate({ type }, workerResponse.result, {}, "");
+
       if (!validation.isValid)
         validation.messages?.map((message) => {
           lintErrors.unshift({
@@ -550,14 +920,13 @@ export function* evaluateArgumentSaga(action: any) {
           });
         });
     }
+
     yield put(
-      setEvaluatedArgument({
-        [name]: {
-          type,
-          value: workerResponse.result,
-          name,
+      setEvaluatedActionSelectorField({
+        id,
+        evaluatedValue: {
+          value: workerResponse.result as string,
           errors: lintErrors,
-          isInvalid: lintErrors.length > 0,
         },
       }),
     );
@@ -577,17 +946,25 @@ export function* updateReplayEntitySaga(
   //Delay updates to replay object to not persist every keystroke
   yield delay(REPLAY_DELAY);
   const { entity, entityId, entityType } = actionPayload.payload;
-  return yield call(worker.request, EVAL_WORKER_ACTIONS.UPDATE_REPLAY_OBJECT, {
-    entityId,
-    entity,
-    entityType,
-  });
+  const workerResponse: unknown = yield call(
+    evalWorker.request,
+    EVAL_WORKER_ACTIONS.UPDATE_REPLAY_OBJECT,
+    {
+      entityId,
+      entity,
+      entityType,
+    },
+  );
+
+  return workerResponse;
 }
 
 export function* workerComputeUndoRedo(operation: string, entityId: string) {
-  return yield call(worker.request, operation, {
+  const workerResponse: unknown = yield call(evalWorker.request, operation, {
     entityId,
   });
+
+  return workerResponse;
 }
 
 // Type to represent the state of the evaluation reducer
@@ -598,11 +975,13 @@ export interface FormEvaluationConfig
 
 // Function to trigger the form eval job in the worker
 export function* evalFormConfig(formEvaluationConfigObj: FormEvaluationConfig) {
-  return yield call(
-    worker.request,
+  const workerResponse: unknown = yield call(
+    evalWorker.request,
     EVAL_WORKER_ACTIONS.INIT_FORM_EVAL,
     formEvaluationConfigObj,
   );
+
+  return workerResponse;
 }
 
 export function* setAppVersionOnWorkerSaga(action: {
@@ -610,13 +989,15 @@ export function* setAppVersionOnWorkerSaga(action: {
   payload: EvaluationVersion;
 }) {
   const version: EvaluationVersion = action.payload;
-  yield call(worker.request, EVAL_WORKER_ACTIONS.SET_EVALUATION_VERSION, {
+
+  yield call(evalWorker.request, EVAL_WORKER_ACTIONS.SET_EVALUATION_VERSION, {
     version,
   });
 }
 
 export default function* evaluationSagaListeners() {
   yield take(ReduxActionTypes.START_EVALUATION);
+
   while (true) {
     try {
       yield call(evaluationChangeListenerSaga);

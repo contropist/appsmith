@@ -1,8 +1,10 @@
 import React from "react";
-import BaseControl, { ControlProps } from "./BaseControl";
-import Toggle from "components/ads/Toggle";
-import { ControlType } from "constants/PropertyControlConstants";
-import { Field, WrappedFieldProps } from "redux-form";
+import type { ControlProps } from "./BaseControl";
+import BaseControl from "./BaseControl";
+import { Switch } from "@appsmith/ads";
+import type { ControlType } from "constants/PropertyControlConstants";
+import type { WrappedFieldProps } from "redux-form";
+import { Field } from "redux-form";
 import styled from "styled-components";
 
 type SwitchFieldProps = WrappedFieldProps & {
@@ -12,34 +14,21 @@ type SwitchFieldProps = WrappedFieldProps & {
   disabled: boolean;
 };
 
-const StyledToggle = styled(Toggle)`
-  .slider {
-    margin-left: 10px;
-    width: 40px;
-    height: 20px;
-  }
-  .slider::before {
-    height: 16px;
-    width: 16px;
-  }
-  input:checked + .slider::before {
-    transform: translateX(19px);
-  }
-`;
-
 const SwitchWrapped = styled.div`
   flex-direction: row;
   display: flex;
   align-items: center;
-  .bp3-control {
-    margin-bottom: 0px;
-  }
+  justify-content: end;
+  position: relative;
   max-width: 60vw;
 `;
 
+// TODO: Fix this the next time the file is edited
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export class SwitchField extends React.Component<SwitchFieldProps, any> {
   get value() {
     const { input } = this.props;
+
     if (typeof input.value !== "string") return !!input.value;
     else {
       if (input.value.toLocaleLowerCase() === "false") return false;
@@ -49,19 +38,16 @@ export class SwitchField extends React.Component<SwitchFieldProps, any> {
 
   render() {
     return (
-      <div>
-        <SwitchWrapped data-cy={this.props.input.name}>
-          <StyledToggle
-            className="switch-control"
-            disabled={this.props.disabled}
-            name={this.props.input.name}
-            onToggle={(value: any) => {
-              this.props.input.onChange(value);
-            }}
-            value={this.value}
-          />
-        </SwitchWrapped>
-      </div>
+      <SwitchWrapped data-testid={this.props.input.name}>
+        {/* TODO: refactor so that the label of the field props is also passed down and a part of Switch.*/}
+        <Switch
+          className="switch-control"
+          isDisabled={this.props.disabled}
+          isSelected={this.value}
+          name={this.props.input.name}
+          onChange={(isSelected) => this.props.input.onChange(isSelected)}
+        />
+      </SwitchWrapped>
     );
   }
 }

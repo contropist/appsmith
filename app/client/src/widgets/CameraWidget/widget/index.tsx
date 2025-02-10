@@ -1,22 +1,113 @@
 import React from "react";
 
-import BaseWidget, { WidgetProps, WidgetState } from "widgets/BaseWidget";
-import { DerivedPropertiesMap } from "utils/WidgetFactory";
-import { ValidationTypes } from "constants/WidgetValidation";
-import { WIDGET_PADDING } from "constants/WidgetConstants";
 import { EventType } from "constants/AppsmithActionConstants/ActionConstants";
+import { WIDGET_PADDING } from "constants/WidgetConstants";
+import { ValidationTypes } from "constants/WidgetValidation";
 import { base64ToBlob, createBlobUrl } from "utils/AppsmithUtils";
-import { FileDataTypes } from "widgets/constants";
-
-import CameraComponent from "../component";
+import type { DerivedPropertiesMap } from "WidgetProvider/factory";
+import type { WidgetProps, WidgetState } from "widgets/BaseWidget";
+import BaseWidget from "widgets/BaseWidget";
 import {
-  CameraMode,
-  CameraModeTypes,
-  MediaCaptureStatusTypes,
-} from "../constants";
+  FileDataTypes,
+  DefaultMobileCameraTypes,
+} from "WidgetProvider/constants";
+
+import type { SetterConfig, Stylesheet } from "entities/AppTheming";
+import CameraComponent from "../component";
+import type { CameraMode } from "../constants";
+import { CameraModeTypes, MediaCaptureStatusTypes } from "../constants";
+import type {
+  AnvilConfig,
+  AutocompletionDefinitions,
+} from "WidgetProvider/constants";
+import {
+  BACK_CAMERA_LABEL,
+  createMessage,
+  DEFAULT_CAMERA_LABEL,
+  DEFAULT_CAMERA_LABEL_DESCRIPTION,
+  FRONT_CAMERA_LABEL,
+} from "ee/constants/messages";
+import {
+  FlexVerticalAlignment,
+  ResponsiveBehavior,
+} from "layoutSystems/common/utils/constants";
+import IconSVG from "../icon.svg";
+import ThumbnailSVG from "../thumbnail.svg";
+import { WIDGET_TAGS } from "constants/WidgetConstants";
 
 class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
-  static getPropertyPaneConfig() {
+  static type = "CAMERA_WIDGET";
+
+  static getConfig() {
+    return {
+      name: "Camera", // The display name which will be made in uppercase and show in the widgets panel ( can have spaces )
+      iconSVG: IconSVG,
+      thumbnailSVG: ThumbnailSVG,
+      tags: [WIDGET_TAGS.EXTERNAL],
+      needsMeta: true, // Defines if this widget adds any meta properties
+      isCanvas: false, // Defines if this widget has a canvas within in which we can drop other widgets
+      searchTags: ["photo", "video recorder"],
+    };
+  }
+
+  static getDefaults() {
+    return {
+      widgetName: "Camera",
+      rows: 33,
+      columns: 25,
+      mode: CameraModeTypes.CAMERA,
+      isDisabled: false,
+      isVisible: true,
+      isMirrored: true,
+      version: 1,
+      responsiveBehavior: ResponsiveBehavior.Hug,
+      flexVerticalAlignment: FlexVerticalAlignment.Top,
+    };
+  }
+
+  static getAutoLayoutConfig() {
+    return {
+      widgetSize: [
+        {
+          viewportMinWidth: 0,
+          configuration: () => {
+            return {
+              minWidth: "280px",
+              minHeight: "300px",
+            };
+          },
+        },
+      ],
+    };
+  }
+
+  static getAnvilConfig(): AnvilConfig | null {
+    return {
+      isLargeWidget: false,
+      widgetSize: {
+        maxHeight: {},
+        maxWidth: {},
+        minHeight: { base: "300px" },
+        minWidth: { base: "280px" },
+      },
+    };
+  }
+
+  static getAutocompleteDefinitions(): AutocompletionDefinitions {
+    return {
+      "!doc":
+        "Camera widget allows users to take a picture or record videos through their system camera using browser permissions.",
+      "!url": "https://docs.appsmith.com/widget-reference/camera",
+      imageBlobURL: "string",
+      imageDataURL: "string",
+      imageRawBinary: "string",
+      videoBlobURL: "string",
+      videoDataURL: "string",
+      videoRawBinary: "string",
+    };
+  }
+
+  static getPropertyPaneContentConfig() {
     return [
       {
         sectionName: "General",
@@ -24,7 +115,9 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
           {
             propertyName: "mode",
             label: "Mode",
-            controlType: "DROP_DOWN",
+            controlType: "ICON_TABS",
+            defaultValue: "CAMERA",
+            fullWidth: true,
             helpText: "Whether a picture is taken or a video is recorded",
             options: [
               {
@@ -46,16 +139,6 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
             },
           },
           {
-            propertyName: "isDisabled",
-            label: "Disabled",
-            controlType: "SWITCH",
-            helpText: "Disables clicks to this widget",
-            isJSConvertible: true,
-            isBindProperty: true,
-            isTriggerProperty: false,
-            validation: { type: ValidationTypes.BOOLEAN },
-          },
-          {
             propertyName: "isVisible",
             label: "Visible",
             helpText: "Controls the visibility of the widget",
@@ -66,25 +149,62 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
             validation: { type: ValidationTypes.BOOLEAN },
           },
           {
+            propertyName: "isDisabled",
+            label: "Disabled",
+            controlType: "SWITCH",
+            helpText: "Disables clicks to this widget",
+            isJSConvertible: true,
+            isBindProperty: true,
+            isTriggerProperty: false,
+            validation: { type: ValidationTypes.BOOLEAN },
+          },
+          {
             propertyName: "isMirrored",
             label: "Mirrored",
             helpText: "Show camera preview and get the screenshot mirrored",
             controlType: "SWITCH",
-            hidden: (props: CameraWidgetProps) =>
-              props.mode === CameraModeTypes.VIDEO,
             dependencies: ["mode"],
             isJSConvertible: true,
             isBindProperty: true,
             isTriggerProperty: false,
             validation: { type: ValidationTypes.BOOLEAN },
           },
+          {
+            propertyName: "defaultCamera",
+            label: createMessage(DEFAULT_CAMERA_LABEL),
+            helpText: createMessage(DEFAULT_CAMERA_LABEL_DESCRIPTION),
+            controlType: "DROP_DOWN",
+            defaultValue: DefaultMobileCameraTypes.BACK,
+            options: [
+              {
+                label: createMessage(FRONT_CAMERA_LABEL),
+                value: DefaultMobileCameraTypes.FRONT,
+              },
+              {
+                label: createMessage(BACK_CAMERA_LABEL),
+                value: DefaultMobileCameraTypes.BACK,
+              },
+            ],
+            isBindProperty: true,
+            isTriggerProperty: false,
+            validation: {
+              type: ValidationTypes.TEXT,
+              params: {
+                allowedValues: [
+                  DefaultMobileCameraTypes.FRONT,
+                  DefaultMobileCameraTypes.BACK,
+                ],
+                default: DefaultMobileCameraTypes.BACK,
+              },
+            },
+          },
         ],
       },
       {
-        sectionName: "Actions",
+        sectionName: "Events",
         children: [
           {
-            helpText: "Triggers an action when the image is captured",
+            helpText: "when the image is captured",
             propertyName: "onImageCapture",
             label: "OnImageCapture",
             controlType: "ACTION_SELECTOR",
@@ -95,9 +215,9 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
             isTriggerProperty: true,
           },
           {
-            helpText: "Triggers an action when the image is saved",
+            helpText: "when the image is saved",
             propertyName: "onImageSave",
-            label: "OnImageSave",
+            label: "onImageCapture",
             controlType: "ACTION_SELECTOR",
             hidden: (props: CameraWidgetProps) =>
               props.mode === CameraModeTypes.VIDEO,
@@ -107,7 +227,7 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
             isTriggerProperty: true,
           },
           {
-            helpText: "Triggers an action when the video recording get started",
+            helpText: "when the video recording get started",
             propertyName: "onRecordingStart",
             label: "OnRecordingStart",
             controlType: "ACTION_SELECTOR",
@@ -118,7 +238,7 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
             isTriggerProperty: true,
           },
           {
-            helpText: "Triggers an action when the video recording stops",
+            helpText: "when the video recording stops",
             propertyName: "onRecordingStop",
             label: "OnRecordingStop",
             controlType: "ACTION_SELECTOR",
@@ -129,9 +249,9 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
             isTriggerProperty: true,
           },
           {
-            helpText: "Triggers an action when the video recording is saved",
+            helpText: "when the video recording is saved",
             propertyName: "onVideoSave",
-            label: "OnVideoSave",
+            label: "onVideoSave",
             controlType: "ACTION_SELECTOR",
             hidden: (props: CameraWidgetProps) =>
               props.mode === CameraModeTypes.CAMERA,
@@ -142,12 +262,17 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
           },
         ],
       },
+    ];
+  }
+
+  static getPropertyPaneStyleConfig() {
+    return [
       {
-        sectionName: "Styles",
+        sectionName: "Border and shadow",
         children: [
           {
             propertyName: "borderRadius",
-            label: "Border Radius",
+            label: "Border radius",
             helpText:
               "Rounds the corners of the icon button's outer border edge",
             controlType: "BORDER_RADIUS_OPTIONS",
@@ -158,7 +283,7 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
           },
           {
             propertyName: "boxShadow",
-            label: "Box Shadow",
+            label: "Box shadow",
             helpText:
               "Enables you to cast a drop shadow from the frame of the widget",
             controlType: "BOX_SHADOW_OPTIONS",
@@ -180,6 +305,8 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
     return {};
   }
 
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static getMetaPropertiesMap(): Record<string, any> {
     return {
       image: null,
@@ -194,32 +321,47 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
     };
   }
 
-  static getWidgetType(): string {
-    return "CAMERA_WIDGET";
+  static getStylesheetConfig(): Stylesheet {
+    return {
+      borderRadius: "{{appsmith.theme.borderRadius.appBorderRadius}}",
+      boxShadow: "none",
+    };
   }
 
-  getPageView() {
+  static getSetterConfig(): SetterConfig {
+    return {
+      __setters: {
+        setVisibility: {
+          path: "isVisible",
+          type: "boolean",
+        },
+        setDisabled: {
+          path: "isDisabled",
+          type: "boolean",
+        },
+      },
+    };
+  }
+
+  getWidgetView() {
     const {
-      bottomRow,
+      componentHeight,
+      componentWidth,
+      defaultCamera,
       isDisabled,
       isMirrored,
-      leftColumn,
       mode,
-      parentColumnSpace,
-      parentRowSpace,
-      rightColumn,
-      topRow,
       videoBlobURL,
     } = this.props;
 
-    const height = (bottomRow - topRow) * parentRowSpace - WIDGET_PADDING * 2;
-    const width =
-      (rightColumn - leftColumn) * parentColumnSpace - WIDGET_PADDING * 2;
+    const height = componentHeight - WIDGET_PADDING * 2;
+    const width = componentWidth - WIDGET_PADDING * 2;
 
     return (
       <CameraComponent
         borderRadius={this.props.borderRadius}
         boxShadow={this.props.boxShadow}
+        defaultCamera={defaultCamera}
         disabled={isDisabled}
         height={height}
         mirrored={isMirrored}
@@ -242,9 +384,11 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
       this.props.updateWidgetMetaProperty("imageBlobURL", undefined);
       this.props.updateWidgetMetaProperty("imageDataURL", undefined);
       this.props.updateWidgetMetaProperty("imageRawBinary", undefined);
+
       return;
     }
-    // Set isDirty to true when an image is caputured
+
+    // Set isDirty to true when an image is captured
     if (!this.props.isDirty) {
       this.props.updateWidgetMetaProperty("isDirty", true);
     }
@@ -309,6 +453,7 @@ class CameraWidget extends BaseWidget<CameraWidgetProps, WidgetState> {
       this.props.updateWidgetMetaProperty("videoBlobURL", undefined);
       this.props.updateWidgetMetaProperty("videoDataURL", undefined);
       this.props.updateWidgetMetaProperty("videoRawBinary", undefined);
+
       return;
     }
 
@@ -360,6 +505,7 @@ export interface CameraWidgetProps extends WidgetProps {
   borderRadius: string;
   boxShadow: string;
   isDirty: boolean;
+  defaultCamera: string;
 }
 
 export default CameraWidget;

@@ -1,12 +1,10 @@
 import { get, isEmpty } from "lodash";
 
-import { PanelConfig } from "constants/PropertyControlConstants";
-import {
-  ARRAY_ITEM_KEY,
-  FieldType,
-  SchemaItem,
-} from "widgets/JSONFormWidget/constants";
-import { getSchemaItem, HiddenFnParams } from "./helper";
+import type { PanelConfig } from "constants/PropertyControlConstants";
+import type { SchemaItem } from "widgets/JSONFormWidget/constants";
+import { FieldType } from "widgets/JSONFormWidget/constants";
+import type { HiddenFnParams } from "./helper";
+import { getSchemaItem, isFieldTypeArrayOrObject } from "./helper";
 import {
   ARRAY_PROPERTIES,
   CHECKBOX_PROPERTIES,
@@ -19,7 +17,7 @@ import {
   SELECT_PROPERTIES,
   SWITCH_PROPERTIES,
 } from "./properties";
-import { JSONFormWidgetProps } from "..";
+import type { JSONFormWidgetProps } from "..";
 
 function generatePanelPropertyConfig(
   nestingLevel: number,
@@ -30,26 +28,23 @@ function generatePanelPropertyConfig(
     editableTitle: true,
     titlePropertyName: "label",
     panelIdPropertyName: "identifier",
-    children: [
+    contentChildren: [
       {
-        sectionName: "General",
+        sectionName: "Data",
         children: [
-          ...COMMON_PROPERTIES.fieldType,
-          ...COMMON_PROPERTIES.customField,
-          ...COMMON_PROPERTIES.options,
-          ...ARRAY_PROPERTIES.general,
-          ...CHECKBOX_PROPERTIES.general,
-          ...DATE_PROPERTIES.general,
-          ...INPUT_PROPERTIES.general,
-          ...MULTI_SELECT_PROPERTIES.general,
-          ...RADIO_GROUP_PROPERTIES.general,
-          ...SELECT_PROPERTIES.general,
-          ...SWITCH_PROPERTIES.general,
-          ...COMMON_PROPERTIES.accessibility,
-          ...ARRAY_PROPERTIES.accessibility,
+          ...COMMON_PROPERTIES.content.data,
+          ...INPUT_PROPERTIES.content.data,
+          ...SWITCH_PROPERTIES.content.data,
+          ...SELECT_PROPERTIES.content.data,
+          ...RADIO_GROUP_PROPERTIES.content.data,
+          ...MULTI_SELECT_PROPERTIES.content.data,
+          ...DATE_PROPERTIES.content.data,
+          ...CHECKBOX_PROPERTIES.content.data,
+          ...ARRAY_PROPERTIES.content.data,
           {
             propertyName: "children",
-            label: "Field Configuration",
+            label: "Field configuration",
+            helpText: "Field configuration",
             controlType: "FIELD_CONFIGURATION",
             isBindProperty: false,
             isTriggerProperty: false,
@@ -67,59 +62,104 @@ function generatePanelPropertyConfig(
         ],
       },
       {
-        sectionName: "Label Styles",
-        children: [...COMMON_PROPERTIES.labelStyles],
-        hidden: (props: JSONFormWidgetProps, propertyPath: string) => {
-          const schemaItem: SchemaItem = get(props, propertyPath, {});
-
-          return (
-            schemaItem.identifier === ARRAY_ITEM_KEY &&
-            schemaItem.fieldType === FieldType.OBJECT
-          );
-        },
+        sectionName: "Label",
+        children: [
+          ...COMMON_PROPERTIES.content.label,
+          ...CHECKBOX_PROPERTIES.content.label,
+          ...SWITCH_PROPERTIES.content.label,
+        ],
       },
       {
-        sectionName: "Styles",
+        sectionName: "Search and Filters",
         children: [
-          ...CHECKBOX_PROPERTIES.styles,
-          ...RADIO_GROUP_PROPERTIES.styles,
-          ...SWITCH_PROPERTIES.styles,
-          ...COMMON_PROPERTIES.styles,
+          ...SELECT_PROPERTIES.content.searchAndFilters,
+          ...MULTI_SELECT_PROPERTIES.content.searchAndFilters,
         ],
         hidden: (props: JSONFormWidgetProps, propertyPath: string) => {
           const schemaItem: SchemaItem = get(props, propertyPath, {});
 
-          // Array and Object handle their own style sections
-          return (
-            schemaItem.fieldType === FieldType.OBJECT ||
-            schemaItem.fieldType === FieldType.ARRAY
+          return !(
+            schemaItem.fieldType === FieldType.SELECT ||
+            schemaItem.fieldType === FieldType.MULTISELECT
           );
         },
       },
-      ...OBJECT_PROPERTIES.sections,
-      ...ARRAY_PROPERTIES.sections,
       {
-        sectionName: "Actions",
+        sectionName: "Validation",
         children: [
-          ...INPUT_PROPERTIES.actions,
-          ...CHECKBOX_PROPERTIES.actions,
-          ...DATE_PROPERTIES.actions,
-          ...RADIO_GROUP_PROPERTIES.actions,
-          ...SELECT_PROPERTIES.actions,
-          ...SWITCH_PROPERTIES.actions,
-          ...MULTI_SELECT_PROPERTIES.actions,
-          ...COMMON_PROPERTIES.actions,
+          ...INPUT_PROPERTIES.content.validation,
+          ...DATE_PROPERTIES.content.validation,
         ],
+        hidden: isFieldTypeArrayOrObject,
+      },
+      {
+        sectionName: "General",
+        children: [
+          ...COMMON_PROPERTIES.content.general,
+          ...INPUT_PROPERTIES.content.general,
+          ...SELECT_PROPERTIES.content.general,
+          ...MULTI_SELECT_PROPERTIES.content.general,
+          ...COMMON_PROPERTIES.content.generalSwitch,
+          ...MULTI_SELECT_PROPERTIES.content.toggles,
+          ...DATE_PROPERTIES.content.general,
+          ...ARRAY_PROPERTIES.content.general,
+        ],
+      },
+      {
+        sectionName: "Events",
+        children: [
+          ...CHECKBOX_PROPERTIES.content.events,
+          ...DATE_PROPERTIES.content.events,
+          ...MULTI_SELECT_PROPERTIES.content.events,
+          ...INPUT_PROPERTIES.content.events,
+          ...SWITCH_PROPERTIES.content.events,
+          ...SELECT_PROPERTIES.content.events,
+          ...COMMON_PROPERTIES.content.events,
+          ...RADIO_GROUP_PROPERTIES.content.events,
+        ],
+        hidden: isFieldTypeArrayOrObject,
+      },
+    ],
+    styleChildren: [
+      {
+        sectionName: "Label styles",
+        children: [...COMMON_PROPERTIES.style.label],
+      },
+      {
+        sectionName: "Icon",
+        children: [...INPUT_PROPERTIES.style.icon],
+        hidden: (props: JSONFormWidgetProps, propertyPath: string) => {
+          const schemaItem: SchemaItem = get(props, propertyPath, {});
+
+          return !(
+            schemaItem.fieldType === FieldType.TEXT_INPUT ||
+            schemaItem.fieldType === FieldType.EMAIL_INPUT ||
+            schemaItem.fieldType === FieldType.PASSWORD_INPUT ||
+            schemaItem.fieldType === FieldType.NUMBER_INPUT
+          );
+        },
+      },
+      {
+        sectionName: "Color",
+        children: [...COMMON_PROPERTIES.style.color],
+        hidden: isFieldTypeArrayOrObject,
+      },
+      {
+        sectionName: "Border and shadow",
+        children: [...COMMON_PROPERTIES.style.borderShadow],
         hidden: (props: JSONFormWidgetProps, propertyPath: string) => {
           const schemaItem: SchemaItem = get(props, propertyPath, {});
 
           return (
-            schemaItem.fieldType === FieldType.OBJECT ||
             schemaItem.fieldType === FieldType.ARRAY ||
-            schemaItem.identifier === ARRAY_ITEM_KEY
+            schemaItem.fieldType === FieldType.OBJECT ||
+            schemaItem.fieldType === FieldType.RADIO_GROUP ||
+            schemaItem.fieldType === FieldType.SWITCH
           );
         },
       },
+      ...OBJECT_PROPERTIES.style.root,
+      ...ARRAY_PROPERTIES.style.root,
     ],
   } as PanelConfig;
 }

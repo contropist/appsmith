@@ -1,10 +1,12 @@
 import {
+  changeInfoSinceLastCommit,
   getIsStartingWithRemoteBranches,
   isLocalBranch,
   isRemoteBranch,
   isValidGitRemoteUrl,
   removeSpecialChars,
 } from "./utils";
+import { ApplicationVersion } from "ee/actions/applicationActions";
 
 const validUrls = [
   "git@github.com:user/project.git",
@@ -22,9 +24,19 @@ const validUrls = [
   "ssh://host.xz/~/path/to/repo.git",
   "git@ssh.dev.azure.com:v3/something/other/thing",
   "git@ssh.dev.azure.com:v3/something/other/thing.git",
+  "git@ssh.dev.azure.com:v3/something/other/(thing).git",
+  "git@ssh.dev.azure.com:v3/(((something)/(other)/(thing).git",
+  "git@abcd.org:org__v3/(((something)/(other)/(thing).git",
+  "git@gitlab-abcd.test.org:org__org/repoName.git",
+  "git@gitlab__abcd.test.org:org__org/repoName.git",
+  "git@ssh.dev.azure.com:v3/something/with%20space%20(some)/geo-mantis",
+  "git@ssh.dev.azure.com:v3/something/with%20space%20some/geo-mantis",
+  "user@host.xz:path/to/repo.git",
+  "org-987654321@github.com:org_name/repository_name.git",
 ];
 
 const invalidUrls = [
+  "git@ssh.dev.azure.(com):v3/(((something)/(other)/(thing).git",
   "git@ssh.dev.azure.com:v3/something/other/thing/",
   "gitclonegit://a@b:c/d.git",
   "https://github.com/user/project.git",
@@ -52,19 +64,19 @@ const invalidUrls = [
   "host.xz:/path/to/repo.git/",
   "user@host.xz:~user/path/to/repo.git/",
   "host.xz:~user/path/to/repo.git/",
-  "user@host.xz:path/to/repo.git",
   "host.xz:path/to/repo.git",
   "rsync://host.xz/path/to/repo.git/",
 ];
 
 describe("gitSync utils", () => {
-  describe("getIsStartingWithRemoteBranches", function() {
+  describe("getIsStartingWithRemoteBranches", function () {
     it("returns true when only remote starts with origin/", () => {
       const actual = getIsStartingWithRemoteBranches(
         "whatever",
         "origin/whateverelse",
       );
       const expected = true;
+
       expect(actual).toEqual(expected);
     });
 
@@ -74,18 +86,21 @@ describe("gitSync utils", () => {
         "origin/whateverelse",
       );
       const expected = false;
+
       expect(actual).toEqual(expected);
     });
 
     it("returns empty string if param:local is empty string", () => {
       const actual = getIsStartingWithRemoteBranches("a", "");
       const expected = "";
+
       expect(actual).toEqual(expected);
     });
 
     it("returns empty string if param:remote is empty string", () => {
       const actual = getIsStartingWithRemoteBranches("", "");
       const expected = "";
+
       expect(actual).toEqual(expected);
     });
   });
@@ -95,6 +110,7 @@ describe("gitSync utils", () => {
       it(`${validUrl} is a valid git remote URL`, () => {
         const actual = isValidGitRemoteUrl(validUrl);
         const expected = true;
+
         expect(actual).toEqual(expected);
       });
     });
@@ -105,6 +121,7 @@ describe("gitSync utils", () => {
       it(`${invalidUrl} is a valid git remote URL`, () => {
         const actual = isValidGitRemoteUrl(invalidUrl);
         const expected = false;
+
         expect(actual).toEqual(expected);
       });
     });
@@ -115,6 +132,7 @@ describe("gitSync utils", () => {
       const branches = ["origin/", "origin/_", "origin/a", "origin/origin"];
       const actual = branches.every(isRemoteBranch);
       const expected = true;
+
       expect(actual).toEqual(expected);
     });
 
@@ -131,6 +149,7 @@ describe("gitSync utils", () => {
       ];
       const actual = branches.every(isRemoteBranch);
       const expected = false;
+
       expect(actual).toEqual(expected);
     });
   });
@@ -140,6 +159,7 @@ describe("gitSync utils", () => {
       const branches = ["origin/", "origin/_", "origin/a", "origin/origin"];
       const actual = branches.every(isLocalBranch);
       const expected = false;
+
       expect(actual).toEqual(expected);
     });
 
@@ -156,6 +176,7 @@ describe("gitSync utils", () => {
       ];
       const actual = branches.every(isLocalBranch);
       const expected = true;
+
       expect(actual).toEqual(expected);
     });
   });
@@ -202,8 +223,107 @@ describe("gitSync utils", () => {
 
       inputs.forEach((input, index) => {
         const result = removeSpecialChars(input);
+
         expect(result).toStrictEqual(expected[index]);
       });
+    });
+  });
+  describe("changeInfoSinceLastCommit", () => {
+    it("returns default data", () => {
+      const applicationData = {
+        appIsExample: false,
+        applicationVersion: ApplicationVersion.DEFAULT,
+        defaultPageId: "",
+        defaultBasePageId: "",
+        slug: "",
+        id: "",
+        baseId: "",
+        isAutoUpdate: false,
+        isManualUpdate: false,
+        name: "",
+        workspaceId: "",
+        pages: [],
+      };
+      const actual = changeInfoSinceLastCommit(applicationData);
+      const expected = {
+        changeReasonText: "Changes since last deployment",
+        isAutoUpdate: false,
+        isManualUpdate: false,
+      };
+
+      expect(actual).toEqual(expected);
+    });
+    it("returns migration change only data", () => {
+      const applicationData = {
+        appIsExample: false,
+        applicationVersion: ApplicationVersion.DEFAULT,
+        defaultPageId: "",
+        defaultBasePageId: "",
+        id: "",
+        baseId: "",
+        slug: "",
+        isAutoUpdate: true,
+        isManualUpdate: false,
+        name: "",
+        workspaceId: "",
+        pages: [],
+      };
+      const actual = changeInfoSinceLastCommit(applicationData);
+      const expected = {
+        changeReasonText: "Changes since last deployment",
+        isAutoUpdate: true,
+        isManualUpdate: false,
+      };
+
+      expect(actual).toEqual(expected);
+    });
+    it("returns migration and user change data", () => {
+      const applicationData = {
+        appIsExample: false,
+        applicationVersion: ApplicationVersion.DEFAULT,
+        defaultPageId: "",
+        defaultBasePageId: "",
+        id: "",
+        baseId: "",
+        slug: "",
+        isAutoUpdate: true,
+        isManualUpdate: true,
+        name: "",
+        workspaceId: "",
+        pages: [],
+      };
+      const actual = changeInfoSinceLastCommit(applicationData);
+      const expected = {
+        changeReasonText: "Changes since last deployment",
+        isAutoUpdate: true,
+        isManualUpdate: true,
+      };
+
+      expect(actual).toEqual(expected);
+    });
+    it("returns user changes only data", () => {
+      const applicationData = {
+        appIsExample: false,
+        applicationVersion: ApplicationVersion.DEFAULT,
+        defaultPageId: "",
+        defaultBasePageId: "",
+        id: "",
+        baseId: "",
+        slug: "",
+        isAutoUpdate: false,
+        isManualUpdate: true,
+        name: "",
+        workspaceId: "",
+        pages: [],
+      };
+      const actual = changeInfoSinceLastCommit(applicationData);
+      const expected = {
+        changeReasonText: "Changes since last deployment",
+        isAutoUpdate: false,
+        isManualUpdate: true,
+      };
+
+      expect(actual).toEqual(expected);
     });
   });
 });

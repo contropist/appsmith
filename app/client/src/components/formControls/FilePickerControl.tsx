@@ -1,53 +1,27 @@
 import * as React from "react";
 import { useState } from "react";
 import styled from "styled-components";
-import BaseControl, { ControlProps } from "./BaseControl";
-import { ControlType } from "constants/PropertyControlConstants";
-import { BaseButton } from "components/designSystems/appsmith/BaseButton";
-import { ButtonVariantTypes } from "components/constants";
-import { Colors } from "constants/Colors";
-import FilePickerV2 from "components/ads/FilePickerV2";
-import { FileType, SetProgress } from "components/ads/FilePicker";
-import {
-  Field,
-  WrappedFieldInputProps,
-  WrappedFieldMetaProps,
-} from "redux-form";
-import DialogComponent from "components/ads/DialogComponent";
+import type { ControlProps } from "./BaseControl";
+import BaseControl from "./BaseControl";
+import type { ControlType } from "constants/PropertyControlConstants";
+import type { SetProgress } from "@appsmith/ads-old";
+import { FilePickerV2, FileType } from "@appsmith/ads-old";
+import type { WrappedFieldInputProps, WrappedFieldMetaProps } from "redux-form";
+import { Field } from "redux-form";
 import { useEffect, useCallback } from "react";
 import { replayHighlightClass } from "globalStyles/portals";
+import { Button, Modal, ModalBody, ModalContent } from "@appsmith/ads";
 
 const StyledDiv = styled.div`
   flex: 1;
-  border: 1px solid #d3dee3;
+  border: 1px solid var(--ads-v2-color-border);
   border-right: none;
   padding: 6px 12px;
   font-size: 14px;
-  color: #768896;
-`;
-
-const SelectButton = styled(BaseButton)`
-  &&&& {
-    max-width: 59px;
-    margin: 0 0px;
-    min-height: 32px;
-    border-radius: 0px;
-    font-weight: bold;
-    background-color: #fff;
-    border-color: ${Colors.PRIMARY_ORANGE} !important;
-    font-size: 14px;
-    &.bp3-button {
-      padding: 0px 0px;
-    }
-    span {
-      color: ${Colors.PRIMARY_ORANGE} !important;
-      font-weight: 400;
-    }
-    &:hover:enabled,
-    &:active:enabled {
-      background: rgba(248, 106, 43, 0.1) !important;
-    }
-  }
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  border-radius: var(--ads-v2-border-radius) 0 0 var(--ads-v2-border-radius);
 `;
 
 const FilePickerWrapper = styled.div`
@@ -57,10 +31,21 @@ const FilePickerWrapper = styled.div`
   justify-content: center;
 `;
 
+const FilePickerContainer = styled.div`
+  flex-direction: row;
+  display: flex;
+  width: 270px;
+  .btn-select {
+    border-radius: 0 var(--ads-v2-border-radius) var(--ads-v2-border-radius) 0 !important;
+  }
+`;
+
 type RenderFilePickerProps = FilePickerControlProps & {
   input?: WrappedFieldInputProps;
   meta?: WrappedFieldMetaProps;
   disabled?: boolean;
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onChange: (event: any) => void;
 };
 
@@ -71,6 +56,7 @@ function RenderFilePicker(props: RenderFilePickerProps) {
     setProgress: SetProgress;
   } | null>(null);
 
+  // const changeOpenState = (state: boolean) => setIsOpen(state);
   const FileUploader = useCallback(
     async (file: File, setProgress: SetProgress) => {
       if (!!file) {
@@ -90,9 +76,11 @@ function RenderFilePicker(props: RenderFilePickerProps) {
   useEffect(() => {
     if (appFileToBeUploaded?.file) {
       const reader = new FileReader();
+
       reader.readAsDataURL(appFileToBeUploaded?.file);
       reader.onloadend = () => {
         const base64data = reader.result;
+
         props.input?.onChange({
           name: appFileToBeUploaded?.file.name,
           base64Content: base64data,
@@ -103,41 +91,47 @@ function RenderFilePicker(props: RenderFilePickerProps) {
 
   return (
     <>
-      <div
-        className={replayHighlightClass}
-        style={{ flexDirection: "row", display: "flex", width: "20vw" }}
-      >
-        <StyledDiv>{props?.input?.value?.name}</StyledDiv>
-        <SelectButton
-          buttonStyle="PRIMARY"
-          buttonVariant={ButtonVariantTypes.SECONDARY}
+      <FilePickerContainer className={replayHighlightClass}>
+        <StyledDiv title={props?.input?.value?.name}>
+          {props?.input?.value?.name}
+        </StyledDiv>
+        <Button
+          className="btn-select"
           disabled={props.disabled}
+          kind="secondary"
           onClick={() => {
             setIsOpen(true);
           }}
-          text={"Select"}
-        />
-      </div>
-      {isOpen ? (
-        <DialogComponent
-          canOutsideClickClose
-          isOpen={isOpen}
-          maxHeight={"540px"}
-          setModalClose={() => setIsOpen(false)}
+          size="md"
         >
-          <FilePickerWrapper>
-            <FilePickerV2
-              delayedUpload
-              fileType={FileType.ANY}
-              fileUploader={FileUploader}
-              onFileRemoved={onRemoveFile}
-            />
-          </FilePickerWrapper>
-        </DialogComponent>
+          Select
+        </Button>
+      </FilePickerContainer>
+      {isOpen ? (
+        <Modal
+          onOpenChange={() => {
+            setIsOpen(false);
+          }}
+          open={isOpen}
+        >
+          <ModalContent style={{ width: "640px" }}>
+            <ModalBody>
+              <FilePickerWrapper>
+                <FilePickerV2
+                  delayedUpload
+                  fileType={FileType.ANY}
+                  fileUploader={FileUploader}
+                  onFileRemoved={onRemoveFile}
+                />
+              </FilePickerWrapper>
+            </ModalBody>
+          </ModalContent>
+        </Modal>
       ) : null}
     </>
   );
 }
+
 class FilePickerControl extends BaseControl<FilePickerControlProps> {
   constructor(props: FilePickerControlProps) {
     super(props);
@@ -148,6 +142,7 @@ class FilePickerControl extends BaseControl<FilePickerControlProps> {
 
   render() {
     const { configProperty, disabled } = this.props;
+
     return (
       <Field
         component={RenderFilePicker}

@@ -1,12 +1,24 @@
 import React from "react";
 import styled, { createGlobalStyle } from "styled-components";
-import Dropdown, { DropdownOption } from "components/ads/Dropdown";
-import { CurrencyTypeOptions, CurrencyOptionProps } from "constants/Currency";
-import Icon, { IconSize } from "components/ads/Icon";
+import type { CurrencyOptionProps } from "constants/Currency";
+import { CurrencyTypeOptions } from "constants/Currency";
+import type { DropdownOption } from "@design-system/widgets-old";
+import { Dropdown, Icon, IconSize } from "@design-system/widgets-old";
 import { Classes } from "@blueprintjs/core";
 import { countryToFlag } from "./utilities";
 import { Colors } from "constants/Colors";
 import { lightenColor } from "widgets/WidgetUtils";
+import { CANVAS_ART_BOARD } from "constants/componentClassNameConstants";
+
+const StyledDropdown = styled(Dropdown)`
+  /*
+    We use this font family to show emoji flags
+    on windows devices
+  */
+  .left-icon-wrapper {
+    font-family: "Twemoji Country Flags";
+  }
+`;
 
 const DropdownTriggerIconWrapper = styled.button`
   display: flex;
@@ -15,26 +27,49 @@ const DropdownTriggerIconWrapper = styled.button`
   font-size: 14px;
   line-height: normal;
   letter-spacing: -0.24px;
-  color: #090707;
-  border-right: 1px solid ${Colors.GREY_3};
+  color: var(--wds-color-text);
+  border-right: 1px solid var(--wds-color-border);
   gap: 0.25rem;
   padding: 0 0.75rem;
   height: 100%;
   margin-right: 0.625rem;
 
+  &:disabled {
+    color: var(--wds-color-text-disabled);
+
+    .dropdown {
+      background: var(--wds-color-bg-disabled);
+
+      svg {
+        path {
+          fill: var(--wds-color-icon-disabled) !important;
+        }
+      }
+    }
+  }
+
   &:focus {
     background-color: ${Colors.GREY_1};
+
+    .dropdown {
+      background: ${Colors.GREY_1};
+    }
   }
 
   .dropdown {
     svg {
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
 
       path {
-        fill: ${Colors.GREY_10} !important;
+        fill: var(--wds-color-icon) !important;
       }
     }
+  }
+
+  &:disabled {
+    border-right: 1px solid var(--wds-color-border-disabled);
+    background-color: var(--wds-color-bg-disabled);
   }
 `;
 
@@ -66,19 +101,58 @@ export const PopoverStyles = createGlobalStyle<{
     }
 
     .${props.portalClassName}  .${Classes.INPUT}:focus, .${
-    props.portalClassName
-  }  .${Classes.INPUT}:active {
+      props.portalClassName
+    }  .${Classes.INPUT}:active {
       border: 1px solid ${props.accentColor} !important;
-      box-shadow: 0px 0px 0px 3px ${lightenColor(props.accentColor)} !important;
+      box-shadow: 0px 0px 0px 2px ${lightenColor(props.accentColor)} !important;
     }
 
-    .${props.portalClassName} .t--dropdown-option:hover,
+    .${props.portalClassName} .t--dropdown-option:hover {
+      background-color: var(--wds-color-bg-hover) !important;
+    }
+
     .${props.portalClassName} .t--dropdown-option.selected {
       background-color: ${lightenColor(props.accentColor)} !important;
     }
 
     .${props.portalClassName} .ads-dropdown-options-wrapper {
       border: 0px solid !important;
+      box-shadow: none !important;
+    }
+
+    .${props.portalClassName} .dropdown-search {
+      margin: 10px !important;
+      width: calc(100% - 20px);
+
+      input {
+        border: 1px solid var(--wds-color-border);
+        padding-left: 36px !important;
+        padding-right: 10px !important;
+      }
+
+      .bp3-icon-search {
+        left: 4px;
+        right: auto;
+      }
+
+      .bp3-input-group + div {
+        display: flex;
+        height: 100%;
+        top: 0;
+        right: 7px;
+        bottom: 0;
+        align-items: center;
+
+        svg {
+          position: relative;
+          top: 0;
+        }
+      }
+
+      input:hover {
+        background: white;
+        border: 1px solid var(--wds-color-border-hover);
+      }
     }
   `}
 `;
@@ -99,12 +173,12 @@ export const CurrencyDropdownOptions = getCurrencyOptions();
 
 export const getDefaultCurrency = () => {
   return {
-    code: "US",
-    currency: "USD",
-    currency_name: "US Dollar",
-    label: "United States",
-    phone: "1",
-    symbol_native: "$",
+    code: "IN",
+    currency: "INR",
+    currency_name: "Indian Rupee",
+    label: "India",
+    phone: "91",
+    symbol_native: "₹",
   };
 };
 
@@ -114,9 +188,11 @@ export const getSelectedCurrency = (currencyCode?: string): DropdownOption => {
         return item.currency === currencyCode;
       })
     : undefined;
+
   if (!selectedCurrency) {
     selectedCurrency = getDefaultCurrency();
   }
+
   return {
     label: `${selectedCurrency.currency} - ${selectedCurrency.currency_name}`,
     searchText: selectedCurrency.label,
@@ -138,13 +214,14 @@ export const getCountryCodeFromCurrencyCode = (currencyCode?: string) => {
 };
 
 interface CurrencyDropdownProps {
-  onCurrencyTypeChange: (currencyCountryCode?: string) => void;
+  onCurrencyTypeChange?: (currencyCountryCode?: string) => void;
   options: Array<DropdownOption>;
   selected?: string;
   allowCurrencyChange?: boolean;
   accentColor?: string;
   borderRadius?: string;
   widgetId: string;
+  isDisabled?: boolean;
 }
 
 export default function CurrencyTypeDropdown(props: CurrencyDropdownProps) {
@@ -153,12 +230,14 @@ export default function CurrencyTypeDropdown(props: CurrencyDropdownProps) {
   const dropdownTrigger = (
     <DropdownTriggerIconWrapper
       className="t--input-currency-change currency-change-dropdown-trigger"
+      data-tabbable={false}
+      disabled={props.isDisabled}
       tabIndex={0}
       type="button"
     >
       {selectedCurrency}
       {props.allowCurrencyChange && (
-        <Icon className="dropdown" name="downArrow" size={IconSize.XXS} />
+        <Icon className="dropdown" name="down-arrow" size={IconSize.XXS} />
       )}
     </DropdownTriggerIconWrapper>
   );
@@ -169,7 +248,7 @@ export default function CurrencyTypeDropdown(props: CurrencyDropdownProps) {
 
   return (
     <>
-      <Dropdown
+      <StyledDropdown
         closeOnSpace={false}
         containerClassName="currency-type-filter"
         dropdownHeight="139px"
@@ -177,11 +256,14 @@ export default function CurrencyTypeDropdown(props: CurrencyDropdownProps) {
         enableSearch
         height="36px"
         onSelect={props.onCurrencyTypeChange}
-        optionWidth="340px"
+        optionWidth="360px"
         options={props.options}
         portalClassName={`country-type-filter-dropdown-${props.widgetId}`}
+        portalContainer={document.getElementById(CANVAS_ART_BOARD) || undefined}
+        searchAutoFocus
         searchPlaceholder="Search by currency or country"
         selected={selectedOption}
+        showEmptyOptions
         showLabelOnly
       />
       <PopoverStyles

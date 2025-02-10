@@ -1,6 +1,11 @@
-import { Action, PluginType } from "entities/Action";
-import _ from "lodash";
-import { getPropertyPath } from "./DynamicBindingUtils";
+import type { Action } from "entities/Action";
+import { PluginType } from "entities/Plugin";
+import equal from "fast-deep-equal/es6";
+import {
+  combineDynamicBindings,
+  getDynamicBindings,
+  getPropertyPath,
+} from "./DynamicBindingUtils";
 import {
   EVAL_VALUE_PATH,
   getDynamicBindingsChangesSaga,
@@ -53,8 +58,10 @@ describe("isChildPropertyPath function", () => {
       ["Dropdown1.options[1]", "Dropdown1.options[1].value", true],
       ["Dropdown1", "Dropdown1.options[1].value", true],
     ];
+
     cases.forEach((testCase) => {
       const result = isChildPropertyPath(testCase[0], testCase[1]);
+
       expect(result).toBe(testCase[2]);
     });
   });
@@ -62,10 +69,11 @@ describe("isChildPropertyPath function", () => {
 
 describe("DynamicBindingPathlist", () => {
   it("Properly updates the dynamicBindingPathlist", () => {
+    // @ts-expect-error: Action type mismatch
     const action: Action = {
       cacheResponse: "",
       id: "61810f59a0f5113e30ba72ac",
-      organizationId: "61800c6bd504bf710747bf9a",
+      workspaceId: "61800c6bd504bf710747bf9a",
       pluginType: PluginType.API,
       pluginId: "5ca385dc81b37f0004b4db85",
       name: "Api1",
@@ -73,7 +81,7 @@ describe("DynamicBindingPathlist", () => {
         // userPermissions: [],
         name: "DEFAULT_REST_DATASOURCE",
         pluginId: "5ca385dc81b37f0004b4db85",
-        organizationId: "61800c6bd504bf710747bf9a",
+        workspaceId: "61800c6bd504bf710747bf9a",
         datasourceConfiguration: {
           url: "https://thatcopy.pw",
         },
@@ -123,7 +131,7 @@ describe("DynamicBindingPathlist", () => {
       ],
       isValid: true,
       invalids: [],
-      // messages: [],
+      messages: [],
       jsonPathKeys: ["Create_users.data", "Button1.text"],
       confirmBeforeExecute: false,
       // userPermissions: ["read:actions", "execute:actions", "manage:actions"],
@@ -153,7 +161,7 @@ describe("DynamicBindingPathlist", () => {
 
     const actualResult = getDynamicBindingsChangesSaga(action, value, field);
 
-    expect(_.isEqual(expectedResult, actualResult)).toBeTruthy();
+    expect(equal(expectedResult, actualResult)).toBeTruthy();
   });
 });
 
@@ -169,6 +177,7 @@ describe("getPropertyPath function", () => {
 
     testCases.forEach(([input, expectedResult]) => {
       const actualResult = getPropertyPath(input);
+
       expect(actualResult).toStrictEqual(expectedResult);
     });
   });
@@ -192,7 +201,89 @@ describe("getNestedEvalPath", () => {
     );
     const expectedUnpopulatedNestedPath = `Table1.${EVAL_VALUE_PATH}.['primaryColumns.state']`;
     const expectedPopulatedNestedPath = `Table1.${EVAL_VALUE_PATH}.primaryColumns.state`;
+
     expect(actualPopulatedNestedPath).toEqual(expectedPopulatedNestedPath);
     expect(actualUnpopulatedNestedPath).toEqual(expectedUnpopulatedNestedPath);
+  });
+});
+
+describe("getDynamicBindings and combineDynamicBindings  function", () => {
+  const testCases = [
+    {
+      js: "(function(){return true;})()",
+      jsSnippets: ["(function(){return true;})()"],
+      propertyValue: "{{(function(){return true;})()}}",
+      stringSegments: ["{{(function(){return true;})()}}"],
+    },
+    {
+      js: '"Hello " + (Customer.Name) + ", the status for your order id " + (orderId) + " is " + (status)',
+      jsSnippets: ["", "Customer.Name", "", "orderId", "", "status"],
+      propertyValue:
+        "Hello {{Customer.Name}}, the status for your order id {{orderId}} is {{status}}",
+      stringSegments: [
+        "Hello ",
+        "{{Customer.Name}}",
+        ", the status for your order id ",
+        "{{orderId}}",
+        " is ",
+        "{{status}}",
+      ],
+    },
+    {
+      js: "(data.map(datum => {return {id: datum}}))",
+      jsSnippets: ["data.map(datum => {return {id: datum}})"],
+      propertyValue: "{{data.map(datum => {return {id: datum}})}}",
+      stringSegments: ["{{data.map(datum => {return {id: datum}})}}"],
+    },
+    {
+      js: '"{{}}"',
+      jsSnippets: [""],
+      propertyValue: "{{}}",
+      stringSegments: ["{{}}"],
+    },
+    {
+      js: "(Query1.data.splice(1).map((data, ind) => ({...data, ind })))",
+      jsSnippets: [
+        "Query1.data.splice(1).map((data, ind) => ({...data, ind }))",
+      ],
+      propertyValue:
+        "{{Query1.data.splice(1).map((data, ind) => ({...data, ind }))}}",
+      stringSegments: [
+        "{{Query1.data.splice(1).map((data, ind) => ({...data, ind }))}}",
+      ],
+    },
+    {
+      js: "(JSObject1.myFun1())",
+      jsSnippets: ["JSObject1.myFun1()"],
+      propertyValue: "{{JSObject1.myFun1()}}",
+      stringSegments: ["{{JSObject1.myFun1()}}"],
+    },
+    {
+      js: "showAlert(currentItem.name + 'Name', '');\nshowAlert(Button1.text, '');",
+      jsSnippets: [
+        "showAlert(currentItem.name + 'Name', '');\nshowAlert(Button1.text, '');",
+      ],
+      propertyValue:
+        "{{showAlert(currentItem.name + 'Name', '');\nshowAlert(Button1.text, '');}}",
+      stringSegments: [
+        "{{showAlert(currentItem.name + 'Name', '');\nshowAlert(Button1.text, '');}}",
+      ],
+    },
+    {
+      js: '"code " + ( currentItem.nol || "Blue;")',
+      jsSnippets: ["", ' currentItem.nol || "Blue;"'],
+      propertyValue: 'code {{ currentItem.nol || "Blue;"}}',
+      stringSegments: ["code ", '{{ currentItem.nol || "Blue;"}}'],
+    },
+  ];
+
+  it("Returns expected js string", () => {
+    testCases.forEach(({ js, jsSnippets, propertyValue, stringSegments }) => {
+      expect(getDynamicBindings(propertyValue)).toStrictEqual({
+        jsSnippets,
+        stringSegments,
+      });
+      expect(combineDynamicBindings(jsSnippets, stringSegments)).toEqual(js);
+    });
   });
 });

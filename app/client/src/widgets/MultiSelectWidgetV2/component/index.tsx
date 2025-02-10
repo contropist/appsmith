@@ -1,39 +1,37 @@
 /* eslint-disable no-console */
+import type { ChangeEvent } from "react";
 import React, {
   useEffect,
   useState,
   useCallback,
   useRef,
-  ChangeEvent,
   useMemo,
 } from "react";
-import Select, { SelectProps } from "rc-select";
-import {
-  DefaultValueType,
-  LabelValueType,
-} from "rc-select/lib/interface/generator";
+import type { SelectProps } from "rc-select";
+import Select from "rc-select";
+import type { DraftValueType, LabelInValueType } from "rc-select/lib/Select";
 import MenuItemCheckBox, {
   DropdownStyles,
   MultiSelectContainer,
   StyledCheckbox,
   InputContainer,
+  RTLStyles,
 } from "./index.styled";
-import {
-  CANVAS_CLASSNAME,
-  MODAL_PORTAL_CLASSNAME,
-  TextSize,
-} from "constants/WidgetConstants";
-import Icon from "components/ads/Icon";
-import { Alignment, Button, Classes, InputGroup } from "@blueprintjs/core";
+import type { RenderMode, TextSize } from "constants/WidgetConstants";
+import type { Alignment } from "@blueprintjs/core";
+import { Button, Classes, InputGroup } from "@blueprintjs/core";
 import { labelMargin, WidgetContainerDiff } from "widgets/WidgetUtils";
 import { Colors } from "constants/Colors";
-import { LabelPosition } from "components/constants";
+import type { LabelPosition } from "components/constants";
 import { uniqBy } from "lodash";
-import LabelWithTooltip from "components/ads/LabelWithTooltip";
+import { Icon } from "@design-system/widgets-old";
+import useDropdown from "widgets/useDropdown";
+import LabelWithTooltip from "widgets/components/LabelWithTooltip";
 
 const menuItemSelectedIcon = (props: { isSelected: boolean }) => {
   return <MenuItemCheckBox checked={props.isSelected} />;
 };
+
 export interface MultiSelectProps
   extends Required<
     Pick<
@@ -42,8 +40,8 @@ export interface MultiSelectProps
     >
   > {
   mode?: "multiple" | "tags";
-  value: LabelValueType[];
-  onChange: (value: DefaultValueType) => void;
+  value: LabelInValueType[];
+  onChange: (value: DraftValueType) => void;
   serverSideFiltering: boolean;
   onFilterChange: (text: string) => void;
   dropDownWidth: number;
@@ -56,6 +54,7 @@ export interface MultiSelectProps
   labelTextSize?: TextSize;
   labelStyle?: string;
   compactMode: boolean;
+  labelTooltip?: string;
   isValid: boolean;
   allowSelectAll?: boolean;
   filterText?: string;
@@ -66,10 +65,14 @@ export interface MultiSelectProps
   accentColor?: string;
   onFocus?: (e: React.FocusEvent) => void;
   onBlur?: (e: React.FocusEvent) => void;
+  onDropdownOpen?: () => void;
+  onDropdownClose?: () => void;
+  renderMode?: RenderMode;
+  isDynamicHeightEnabled?: boolean;
+  rtl?: boolean;
 }
 
 const DEBOUNCE_TIMEOUT = 1000;
-const FOCUS_TIMEOUT = 500;
 
 function MultiSelectComponent({
   accentColor,
@@ -81,6 +84,7 @@ function MultiSelectComponent({
   dropdownStyle,
   dropDownWidth,
   filterText,
+  isDynamicHeightEnabled,
   isFilterable,
   isValid,
   labelAlignment,
@@ -89,14 +93,17 @@ function MultiSelectComponent({
   labelText,
   labelTextColor,
   labelTextSize,
+  labelTooltip,
   labelWidth,
   loading,
-  onBlur,
   onChange,
+  onDropdownClose,
+  onDropdownOpen,
   onFilterChange,
-  onFocus,
   options,
   placeholder,
+  renderMode,
+  rtl,
   serverSideFiltering,
   value,
   widgetId,
@@ -111,6 +118,14 @@ function MultiSelectComponent({
   const labelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const { BackDrop, getPopupContainer, isOpen, onKeyDown, onOpen, selectRef } =
+    useDropdown({
+      inputRef,
+      renderMode,
+      onDropdownOpen,
+      onDropdownClose,
+    });
+
   // SelectAll if all options are in Value
   useEffect(() => {
     if (
@@ -121,6 +136,7 @@ function MultiSelectComponent({
     ) {
       setIsSelectAll(true);
     }
+
     if (isSelectAll && filteredOptions.length !== value.length) {
       setIsSelectAll(false);
     }
@@ -132,6 +148,7 @@ function MultiSelectComponent({
       () => onFilterChange(filter),
       DEBOUNCE_TIMEOUT,
     );
+
     return () => clearTimeout(timeOutId);
   }, [filter]);
 
@@ -141,16 +158,15 @@ function MultiSelectComponent({
       if (serverSideFiltering) {
         return setFilteredOptions(options);
       }
+
       const filtered = options.filter((option) => {
         return (
-          String(option.label)
-            .toLowerCase()
-            .indexOf(filter.toLowerCase()) >= 0 ||
-          String(option.value)
-            .toLowerCase()
-            .indexOf(filter.toLowerCase()) >= 0
+          String(option.label).toLowerCase().indexOf(filter.toLowerCase()) >=
+            0 ||
+          String(option.value).toLowerCase().indexOf(filter.toLowerCase()) >= 0
         );
       });
+
       setFilteredOptions(filtered);
     },
     serverSideFiltering ? [options] : [filter, options],
@@ -163,22 +179,13 @@ function MultiSelectComponent({
       ) : null,
     [filter],
   );
-  const getDropdownPosition = useCallback(() => {
-    const node = _menu.current;
-    if (Boolean(node?.closest(`.${MODAL_PORTAL_CLASSNAME}`))) {
-      return document.querySelector(
-        `.${MODAL_PORTAL_CLASSNAME}`,
-      ) as HTMLElement;
-    }
-    return document.querySelector(`.${CANVAS_CLASSNAME}`) as HTMLElement;
-  }, []);
 
   const handleSelectAll = () => {
     if (!isSelectAll) {
       // Get all options
-      const allOption: LabelValueType[] = filteredOptions.map(
+      const allOption: LabelInValueType[] = filteredOptions.map(
         ({ label, value }) => ({
-          value,
+          value: value || "",
           label,
         }),
       );
@@ -189,79 +196,38 @@ function MultiSelectComponent({
           key: val.value,
         }),
       );
+
       onChange(allSelectedOptions);
+
       return;
     }
+
     return onChange([]);
   };
 
-  const onOpen = useCallback((open: boolean) => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), FOCUS_TIMEOUT);
-    }
-  }, []);
-
   const checkOptionsAndValue = () => {
     const emptyFalseArr = [false];
+
     if (value.length === 0 || filteredOptions.length === 0)
       return emptyFalseArr;
+
     return filteredOptions.map((x) => value.some((y) => y.value === x.value));
   };
 
-  // SelectAll if all options are in Value
-  useEffect(() => {
-    if (
-      !isSelectAll &&
-      filteredOptions.length &&
-      value.length &&
-      !checkOptionsAndValue().includes(false)
-    ) {
-      setIsSelectAll(true);
-    }
-    if (isSelectAll && filteredOptions.length !== value.length) {
-      setIsSelectAll(false);
-    }
-  }, [filteredOptions, value]);
-
-  // Trigger onFilterChange once filter is Updated
-  useEffect(() => {
-    const timeOutId = setTimeout(
-      () => onFilterChange(filter),
-      DEBOUNCE_TIMEOUT,
-    );
-    return () => clearTimeout(timeOutId);
-  }, [filter]);
-
-  // Filter options based on serverSideFiltering
-  useEffect(
-    () => {
-      if (serverSideFiltering) {
-        return setFilteredOptions(options);
-      }
-      const filtered = options.filter((option) => {
-        return (
-          String(option.label)
-            .toLowerCase()
-            .indexOf(filter.toLowerCase()) >= 0 ||
-          String(option.value)
-            .toLowerCase()
-            .indexOf(filter.toLowerCase()) >= 0
-        );
-      });
-      setFilteredOptions(filtered);
-    },
-    serverSideFiltering ? [options] : [filter, options],
-  );
   useEffect(() => {
     const parentWidth = width - WidgetContainerDiff;
+
     if (compactMode && labelRef.current) {
       const labelWidth = labelRef.current.getBoundingClientRect().width;
       const widthDiff = parentWidth - labelWidth - labelMargin;
+
       setMemoDropDownWidth(
         widthDiff > dropDownWidth ? widthDiff : dropDownWidth,
       );
+
       return;
     }
+
     setMemoDropDownWidth(
       parentWidth > dropDownWidth ? parentWidth : dropDownWidth,
     );
@@ -272,17 +238,32 @@ function MultiSelectComponent({
     setFilter(event.target.value);
   }, []);
 
+  const onDropdownVisibleChange = (open: boolean) => {
+    onOpen(open);
+
+    /**
+     * Clear the search input on closing the widget
+     * and serverSideFiltering is off
+     */
+    if (!serverSideFiltering) {
+      setFilter("");
+    }
+  };
+
   const dropdownRender = useCallback(
     (
+      // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       menu: React.ReactElement<any, string | React.JSXElementConstructor<any>>,
     ) => (
-      <>
+      <div dir={rtl ? "rtl" : "ltr"}>
+        <BackDrop />
         {isFilterable ? (
           <InputGroup
             inputRef={inputRef}
             leftIcon="search"
             onChange={onQueryChange}
-            onKeyDown={(e) => e.stopPropagation()}
+            onKeyDown={onKeyDown}
             placeholder="Filter..."
             // ref={inputRef}
             rightElement={clearButton as JSX.Element}
@@ -304,7 +285,7 @@ function MultiSelectComponent({
           ) : null}
           {menu}
         </div>
-      </>
+      </div>
     ),
     [
       isSelectAll,
@@ -314,6 +295,7 @@ function MultiSelectComponent({
       isFilterable,
       filter,
       onQueryChange,
+      rtl,
     ],
   );
 
@@ -327,7 +309,11 @@ function MultiSelectComponent({
       isValid={isValid}
       labelPosition={labelPosition}
       ref={_menu as React.RefObject<HTMLDivElement>}
+      rtl={rtl}
     >
+      {rtl ? (
+        <RTLStyles dropdownContainer={`multi-select-dropdown-${widgetId}`} />
+      ) : null}
       <DropdownStyles
         accentColor={accentColor}
         borderRadius={borderRadius}
@@ -340,9 +326,12 @@ function MultiSelectComponent({
           className={`multiselect-label`}
           color={labelTextColor}
           compact={compactMode}
+          cyHelpTextClassName="multiselect-tooltip"
           disabled={disabled}
           fontSize={labelTextSize}
           fontStyle={labelStyle}
+          helpText={labelTooltip}
+          isDynamicHeightEnabled={isDynamicHeightEnabled}
           loading={loading}
           position={labelPosition}
           ref={labelRef}
@@ -354,15 +343,15 @@ function MultiSelectComponent({
         <Select
           animation="slide-up"
           choiceTransitionName="rc-select-selection__choice-zoom"
+          className="rc-select"
           // TODO: Make Autofocus a variable in the property pane
           // autoFocus
-          className="rc-select"
           defaultActiveFirstOption={false}
           disabled={disabled}
-          dropdownClassName={`multi-select-dropdown multiselect-popover-width-${widgetId}`}
+          dropdownClassName={`multi-select-dropdown multiselect-popover-width-${widgetId} multi-select-dropdown-${widgetId}`}
           dropdownRender={dropdownRender}
           dropdownStyle={dropdownStyle}
-          getPopupContainer={getDropdownPosition}
+          getPopupContainer={getPopupContainer}
           inputIcon={
             <Icon
               className="dropdown-icon"
@@ -378,12 +367,12 @@ function MultiSelectComponent({
           menuItemSelectedIcon={menuItemSelectedIcon}
           mode="multiple"
           notFoundContent="No Results Found"
-          onBlur={onBlur}
           onChange={onChange}
-          onDropdownVisibleChange={onOpen}
-          onFocus={onFocus}
+          onDropdownVisibleChange={onDropdownVisibleChange}
+          open={isOpen}
           options={filteredOptions}
           placeholder={placeholder || "select option(s)"}
+          ref={selectRef}
           removeIcon={
             <Icon
               className="remove-icon"

@@ -1,25 +1,29 @@
 import styled, { css } from "styled-components";
 import FormRow from "components/editorComponents/FormRow";
-import FormLabel from "components/editorComponents/FormLabel";
 import {
   JS_OBJECT_HOTKEYS_CLASSNAME,
   RUN_GUTTER_CLASSNAME,
   RUN_GUTTER_ID,
 } from "./constants";
+import { thinScrollbar } from "constants/DefaultTheme";
+import { IDE_HEADER_HEIGHT } from "@appsmith/ads";
 
 export const CodeEditorWithGutterStyles = css`
   .${RUN_GUTTER_ID} {
     width: 0.5em;
-    background: #f0f0f0;
+    background: var(--ads-v2-color-bg-subtle);
     margin-left: 5px;
   }
+
   .${RUN_GUTTER_CLASSNAME} {
     cursor: pointer;
-    color: #f86a2b;
+    color: var(--ads-v2-color-fg-brand);
   }
+
   .CodeMirror-linenumbers {
     width: max-content;
   }
+
   .CodeMirror-linenumber {
     text-align: right;
     padding-left: 0;
@@ -31,9 +35,9 @@ export const CodeEditorWithGutterStyles = css`
 `;
 
 export const FormWrapper = styled.div`
-  height: ${({ theme }) =>
-    `calc(100vh - ${theme.smallHeaderHeight} - ${theme.backBanner})`};
+  height: calc(100vh - ${IDE_HEADER_HEIGHT}px);
   overflow: hidden;
+
   .${JS_OBJECT_HOTKEYS_CLASSNAME} {
     width: 100%;
     height: 100%;
@@ -43,26 +47,29 @@ export const FormWrapper = styled.div`
 export const Form = styled.form`
   display: flex;
   flex-direction: column;
-  height: ${({ theme }) => `calc(100% - ${theme.backBanner})`};
+  height: 100%;
   overflow: hidden;
-  ${FormLabel} {
-    padding: ${(props) => props.theme.spaces[3]}px;
-  }
-  ${FormRow} {
-    ${FormLabel} {
-      padding: 0;
-      width: 100%;
-    }
-  }
+
   .t--no-binding-prompt {
     display: none;
   }
+
+  flex: 1;
+`;
+
+export const StyledFormRow = styled(FormRow)`
+  padding: 0 var(--ads-v2-spaces-7) var(--ads-v2-spaces-5)
+    var(--ads-v2-spaces-7);
+  flex: 1;
 `;
 
 export const NameWrapper = styled.div`
-  width: 49%;
   display: flex;
+  justify-content: space-between;
   align-items: center;
+  width: 50%;
+  overflow: hidden;
+
   input {
     margin: 0;
     box-sizing: border-box;
@@ -70,14 +77,11 @@ export const NameWrapper = styled.div`
 `;
 
 export const ActionButtons = styled.div`
-  justify-self: flex-end;
   display: flex;
   align-items: center;
-
-  button:last-child {
-    margin: 0 ${(props) => props.theme.spaces[7]}px;
-    height: 30px;
-  }
+  flex: 1 1 50%;
+  justify-content: flex-end;
+  gap: var(--ads-v2-spaces-3);
 `;
 
 export const SecondaryWrapper = styled.div`
@@ -86,40 +90,40 @@ export const SecondaryWrapper = styled.div`
   height: calc(100% - 50px);
   overflow: hidden;
 `;
-export const MainConfiguration = styled.div`
-  padding: ${(props) => props.theme.spaces[4]}px
-    ${(props) => props.theme.spaces[10]}px 0px
-    ${(props) => props.theme.spaces[10]}px;
-`;
 
 export const TabbedViewContainer = styled.div<{ isExecuting: boolean }>`
   flex: 1;
   overflow: auto;
   position: relative;
-  border-top: 2px solid ${(props) => props.theme.colors.apiPane.dividerBg};
+  padding: 0px ${(props) => props.theme.spaces[11]}px;
+
+  ${thinScrollbar}
   ${FormRow} {
     min-height: auto;
     padding: ${(props) => props.theme.spaces[0]}px;
+
     & > * {
       margin-right: 0px;
     }
   }
-  &&& {
-    ul.react-tabs__tab-list {
-      padding: 0px ${(props) => props.theme.spaces[12]}px;
+
+  &&&& {
+    ul.ads-v2-tabs__list {
+      padding: 0px ${(props) => props.theme.spaces[11]}px;
       background-color: ${(props) =>
         props.theme.colors.apiPane.responseBody.bg};
     }
-    .react-tabs__tab-panel {
-      ${CodeEditorWithGutterStyles}
-      height: calc(100% - 36px);
-      margin-top: 2px;
-      background-color: ${(props) => props.theme.colors.apiPane.bg};
+
+    .ads-v2-tabs__panel {
+      ${CodeEditorWithGutterStyles};
+      height: calc(100% - 38px);
+      margin-top: 0px;
+      background-color: var(--ads-v2-color-bg);
+
       .CodeEditorTarget {
-        border-bottom: 1px solid
-          ${(props) => props.theme.colors.apiPane.dividerBg};
         outline: none;
       }
+
       ${(props) =>
         props.isExecuting &&
         `
@@ -127,6 +131,12 @@ export const TabbedViewContainer = styled.div<{ isExecuting: boolean }>`
         cursor: progress;
       }
       `}
+      ${CodeEditorWithGutterStyles}
+    }
+
+    .ads-v2-tabs,
+    .js-editor-tab {
+      height: 100%;
     }
   }
 `;

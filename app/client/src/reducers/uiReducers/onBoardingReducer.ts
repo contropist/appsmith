@@ -1,51 +1,37 @@
-import {
-  ReduxAction,
-  ReduxActionTypes,
-} from "@appsmith/constants/ReduxActionConstants";
-import { createReducer } from "utils/AppsmithUtils";
+import type { ReduxAction } from "actions/ReduxActionTypes";
+import { ReduxActionTypes } from "ee/constants/ReduxActionConstants";
+import type { SIGNPOSTING_STEP } from "pages/Editor/FirstTimeUserOnboarding/Utils";
+import { createReducer } from "utils/ReducerUtils";
 
 const initialState: OnboardingState = {
   // Signposting
   inOnboardingWidgetSelection: false,
-  enableFirstTimeUserOnboarding: false,
   forceOpenWidgetPanel: false,
-  firstTimeUserOnboardingApplicationId: "",
+  firstTimeUserOnboardingApplicationIds: [],
   firstTimeUserOnboardingComplete: false,
   showFirstTimeUserOnboardingModal: false,
-  // Guided tour
-  guidedTour: false,
-  loading: false,
-  exploring: false,
-  currentStep: 1,
-  showSuccessMessage: false,
-  showInfoMessage: false,
-  tableWidgetWasSelected: false,
-  hadReachedStep: 0,
-  showEndTourDialog: false,
-  showDeviatingDialog: false,
-  showPostCompletionMessage: false,
-  forceShowContent: 0,
+  setOverlay: false,
+  stepState: [],
+  showSignpostingTooltip: false,
+  showAnonymousDataPopup: false,
 };
+
+export interface StepState {
+  step: SIGNPOSTING_STEP;
+  completed: boolean;
+  read?: boolean;
+}
 
 export interface OnboardingState {
   inOnboardingWidgetSelection: boolean;
-  enableFirstTimeUserOnboarding: boolean;
   forceOpenWidgetPanel: boolean;
-  firstTimeUserOnboardingApplicationId: string;
+  firstTimeUserOnboardingApplicationIds: string[];
   firstTimeUserOnboardingComplete: boolean;
   showFirstTimeUserOnboardingModal: boolean;
-  guidedTour: boolean;
-  loading: boolean;
-  exploring: boolean;
-  currentStep: number;
-  showSuccessMessage: boolean;
-  showInfoMessage: boolean;
-  tableWidgetWasSelected: boolean;
-  hadReachedStep: number;
-  showEndTourDialog: boolean;
-  showDeviatingDialog: boolean;
-  showPostCompletionMessage: boolean;
-  forceShowContent: number;
+  stepState: StepState[];
+  setOverlay: boolean;
+  showSignpostingTooltip: boolean;
+  showAnonymousDataPopup: boolean;
 }
 
 const onboardingReducer = createReducer(initialState, {
@@ -58,22 +44,13 @@ const onboardingReducer = createReducer(initialState, {
       inOnboardingWidgetSelection: action.payload,
     };
   },
-  [ReduxActionTypes.SET_ENABLE_FIRST_TIME_USER_ONBOARDING]: (
+  [ReduxActionTypes.SET_FIRST_TIME_USER_ONBOARDING_APPLICATION_IDS]: (
     state: OnboardingState,
-    action: ReduxAction<boolean>,
+    action: ReduxAction<string[]>,
   ) => {
     return {
       ...state,
-      enableFirstTimeUserOnboarding: action.payload,
-    };
-  },
-  [ReduxActionTypes.SET_FIRST_TIME_USER_ONBOARDING_APPLICATION_ID]: (
-    state: OnboardingState,
-    action: ReduxAction<string>,
-  ) => {
-    return {
-      ...state,
-      firstTimeUserOnboardingApplicationId: action.payload,
+      firstTimeUserOnboardingApplicationIds: action.payload,
     };
   },
   [ReduxActionTypes.SET_FIRST_TIME_USER_ONBOARDING_COMPLETE]: (
@@ -100,107 +77,46 @@ const onboardingReducer = createReducer(initialState, {
   ) => {
     return { ...state, forceOpenWidgetPanel: action.payload };
   },
-  [ReduxActionTypes.ENABLE_GUIDED_TOUR]: (
-    state: OnboardingState,
-    action: ReduxAction<boolean>,
-  ) => {
+  [ReduxActionTypes.SIGNPOSTING_MARK_ALL_READ]: (state: OnboardingState) => {
     return {
       ...state,
-      ...initialState,
-      guidedTour: action.payload,
-      exploring: action.payload,
-      enableFirstTimeUserOnboarding: state.enableFirstTimeUserOnboarding,
-      firstTimeUserOnboardingApplicationId:
-        state.firstTimeUserOnboardingApplicationId,
-      showFirstTimeUserOnboardingModal: state.showFirstTimeUserOnboardingModal,
-    };
-  },
-  [ReduxActionTypes.GUIDED_TOUR_TOGGLE_LOADER]: (
-    state: OnboardingState,
-    action: ReduxAction<boolean>,
-  ) => {
-    return {
-      ...state,
-      loading: action.payload,
-      exploring: !action.payload ? false : state.exploring,
-    };
-  },
-  [ReduxActionTypes.SET_CURRENT_STEP]: (
-    state: OnboardingState,
-    action: ReduxAction<number>,
-  ) => {
-    if (action.payload === state.currentStep) {
-      return state;
-    }
+      stepState: state.stepState.map((step) => {
+        if (step.completed) {
+          return {
+            ...step,
+            read: true,
+          };
+        }
 
-    return {
-      ...state,
-      currentStep: action.payload,
-      showSuccessMessage: false,
-      showInfoMessage: false,
-      hadReachedStep:
-        action.payload > state.hadReachedStep
-          ? action.payload
-          : state.hadReachedStep,
+        return step;
+      }),
     };
   },
-  [ReduxActionTypes.SHOW_INFO_MESSAGE]: (state: OnboardingState) => {
-    return {
-      ...state,
-      showInfoMessage: true,
-    };
-  },
-  [ReduxActionTypes.GUIDED_TOUR_MARK_STEP_COMPLETED]: (
-    state: OnboardingState,
-  ) => {
-    return {
-      ...state,
-      showSuccessMessage: true,
-    };
-  },
-  [ReduxActionTypes.TABLE_WIDGET_WAS_SELECTED]: (
+  [ReduxActionTypes.SET_SIGNPOSTING_OVERLAY]: (
     state: OnboardingState,
     action: ReduxAction<boolean>,
   ) => {
     return {
       ...state,
-      tableWidgetWasSelected: action.payload,
+      setOverlay: action.payload,
     };
   },
-  [ReduxActionTypes.TOGGLE_DEVIATION_DIALOG]: (
+  [ReduxActionTypes.SIGNPOSTING_SHOW_TOOLTIP]: (
     state: OnboardingState,
     action: ReduxAction<boolean>,
   ) => {
     return {
       ...state,
-      showDeviatingDialog: action.payload,
+      showSignpostingTooltip: action.payload,
     };
   },
-  [ReduxActionTypes.TOGGLE_END_GUIDED_TOUR_DIALOG]: (
+  [ReduxActionTypes.SHOW_ANONYMOUS_DATA_POPUP]: (
     state: OnboardingState,
     action: ReduxAction<boolean>,
   ) => {
     return {
       ...state,
-      showEndTourDialog: action.payload,
-    };
-  },
-  [ReduxActionTypes.SHOW_POST_COMPLETION_MESSAGE]: (
-    state: OnboardingState,
-    action: ReduxAction<boolean>,
-  ) => {
-    return {
-      ...state,
-      showPostCompletionMessage: action.payload,
-    };
-  },
-  [ReduxActionTypes.FORCE_SHOW_CONTENT]: (
-    state: OnboardingState,
-    action: ReduxAction<boolean>,
-  ) => {
-    return {
-      ...state,
-      forceShowContent: action.payload,
+      showAnonymousDataPopup: action.payload,
     };
   },
 });

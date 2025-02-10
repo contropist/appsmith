@@ -1,10 +1,10 @@
 package com.appsmith.git.configurations;
 
-import lombok.Getter;
+import lombok.Data;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
-@Getter
+@Data
 @Configuration
 public class GitServiceConfig {
 
@@ -13,5 +13,4 @@ public class GitServiceConfig {
 
     @Value("gitInitializeRepo/GitConnect-Initialize-Repo-Template")
     private String readmeTemplatePath;
-
 }

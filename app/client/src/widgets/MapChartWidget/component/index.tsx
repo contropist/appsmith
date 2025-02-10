@@ -1,23 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
-// Include the react-fusioncharts component
-import ReactFC from "react-fusioncharts";
-// Include the fusioncharts library
-import FusionCharts, { ChartObject } from "fusioncharts";
-
-// Import FusionMaps
-import FusionMaps from "fusioncharts/fusioncharts.maps";
-import World from "fusioncharts/maps/fusioncharts.world";
-
-// Include the theme as fusion
-import FusionTheme from "fusioncharts/themes/fusioncharts.theme.fusion";
-
-// Import the dataset and the colorRange of the map
-import { dataSetForWorld, MapTypes, MapColorObject } from "../constants";
-import { CUSTOM_MAP_PLUGINS } from "../CustomMapConstants";
-
-// Adding the chart and theme as dependency to the core fusioncharts
-ReactFC.fcRoot(FusionCharts, FusionMaps, World, FusionTheme);
+import type { MapColorObject, MapTypes } from "../constants";
+import type { MapData } from "./types";
+import { getChartOption, loadMapGenerator } from "./utilities";
+import * as echarts from "echarts";
+import countryDetails from "./countryDetails";
+import clsx from "clsx";
 
 const MapChartContainer = styled.div<{
   borderRadius?: string;
@@ -36,179 +24,139 @@ const MapChartContainer = styled.div<{
   }
 `;
 
-export interface MapData {
-  value?: string;
-  displayValue?: string;
-  toolText?: string;
-  color?: string;
-  alpha?: number;
-  link?: string;
-  font?: string;
-  fontSize?: string;
-  fontColor?: string;
-  fontBold?: boolean;
-  showLabel?: boolean;
-  showToolTip?: boolean;
-  labelConnectorColor?: string;
-  labelConnectorAlpha?: number;
-  useHoverColor?: boolean;
-}
+export default function EchartComponent(props: MapChartComponentProps) {
+  const [isLoading, setIsLoading] = useState(false);
 
-export type MapType = keyof typeof MapTypes;
+  const loadMap = useMemo(loadMapGenerator, []);
 
-export interface EntityData {
-  id: string;
-  label: string;
-  originalId: string;
-  shortLabel: string;
-  value: number;
-}
+  const [key, setKey] = useState(0);
 
-function MapChartComponent(props: MapChartComponentProps) {
-  const {
-    caption,
-    colorRange,
-    data,
-    onDataPointClick,
-    showLabels,
-    type,
-  } = props;
+  const { caption, colorRange, data, onDataPointClick, showLabels, type } =
+    props;
 
-  // Creating the JSON object to store the chart configurations
-  const defaultChartConfigs: ChartObject = {
-    type: "maps/world", // The chart type
-    width: "100%", // Width of the chart
-    height: "100%", // Height of the chart
-    dataFormat: "json", // Data type
-    dataSource: {
-      // Map Configuration
-      chart: {
-        caption: "Average Annual Population Growth",
-        // subcaption: " 1955-2015",
-        // numbersuffix: "%",
-        includevalueinlabels: "1",
-        labelsepchar: ": ",
-        entityFillHoverColor: "#FFF9C4",
-        theme: "fusion",
-      },
-      // Aesthetics; ranges synced with the slider
-      colorRange: {
-        gradient: "0",
-      },
-      // Source data as JSON --> id represents countries of the world.
-      data: dataSetForWorld,
-    },
-    events: {},
-  };
+  const fontFamily =
+    props.fontFamily === "System Default" ? "" : props.fontFamily;
 
-  const [chartConfigs, setChartConfigs] = useState(defaultChartConfigs);
-  const [chart, setChart] = useState(new FusionCharts(defaultChartConfigs));
+  const colorRangePieces = useMemo(() => {
+    return colorRange.map((color) => {
+      const alpha = color.alpha ?? 100;
+
+      return {
+        min: color.minValue,
+        max: color.maxValue,
+        color: color.code,
+        colorAlpha: alpha ? alpha / 100 : 0,
+        label: color.displayValue,
+      };
+    });
+  }, [colorRange]);
+
+  const transformedData = useMemo(() => {
+    return data.map((each) => ({
+      name: each.id,
+      value: each.value,
+    }));
+  }, [data]);
+
+  const chartContainer = useRef<HTMLDivElement>(null);
+
+  const chartInstance = useRef<echarts.ECharts | null>();
 
   useEffect(() => {
-    // Attach event handlers
-    const newChartConfigs: any = {
-      ...chartConfigs,
+    chartInstance.current = echarts.init(
+      chartContainer.current!,
+      {},
+      {
+        renderer: "svg",
+        width: props.width,
+        height: props.height,
+      },
+    );
+  }, [chartContainer]);
+
+  useEffect(() => {
+    // TODO: Fix this the next time the file is edited
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handler = (event: any) => {
+      const id = event.data.name;
+
+      const regionDetail = countryDetails[type][id];
+
+      onDataPointClick({
+        value: parseFloat(event.data.value),
+        label: regionDetail.label,
+        shortLabel: regionDetail.short_label,
+        originalId: id,
+        id: id.toLowerCase(),
+      });
     };
-    newChartConfigs["events"]["entityClick"] = onDataPointClick;
-    setChartConfigs(newChartConfigs);
+
+    chartInstance.current?.on("click", "series", handler);
 
     return () => {
-      chart.removeEventListener("entityClick", onDataPointClick);
+      chartInstance.current?.off("click", handler);
     };
-  }, [onDataPointClick]);
+  }, [onDataPointClick, chartInstance.current, type]);
 
   useEffect(() => {
-    const newChartConfigs: any = {
-      ...chartConfigs,
-    };
-    newChartConfigs["dataSource"]["chart"]["caption"] = caption;
-    setChartConfigs(newChartConfigs);
-  }, [caption]);
+    setIsLoading(true);
+
+    loadMap(type).then(() => {
+      setIsLoading(false);
+      // we are using Math.random to force the chart to set options again
+      // to avoid the race conditions while loading maps
+      setKey(Math.random());
+    });
+  }, [type]);
 
   useEffect(() => {
-    const targetValue = showLabels ? "1" : "0";
-
-    const newChartConfigs: any = {
-      ...chartConfigs,
-    };
-    newChartConfigs["dataSource"]["chart"]["showLabels"] = targetValue;
-    setChartConfigs(newChartConfigs);
-  }, [showLabels]);
-
-  useEffect(() => {
-    const newChartConfigs: any = {
-      ...chartConfigs,
-    };
-    newChartConfigs["dataSource"]["colorRange"]["color"] = colorRange;
-    chart.setChartData(newChartConfigs.dataSource, "json");
-  }, [JSON.stringify(colorRange)]);
-
-  useEffect(() => {
-    const newChartConfigs = {
-      ...chartConfigs,
-      dataSource: {
-        ...(chartConfigs.dataSource || {}),
-        data,
-      },
-    };
-
-    switch (type) {
-      case MapTypes.WORLD_WITH_ANTARCTICA:
-        newChartConfigs.type = "maps/worldwithantarctica";
-        break;
-      case MapTypes.EUROPE:
-        newChartConfigs.type = "maps/europe";
-        break;
-      case MapTypes.NORTH_AMERICA:
-        newChartConfigs.type = "maps/northamerica";
-        break;
-      case MapTypes.SOURTH_AMERICA:
-        newChartConfigs.type = "maps/southamerica";
-        break;
-      case MapTypes.ASIA:
-        newChartConfigs.type = "maps/asia";
-        break;
-      case MapTypes.OCEANIA:
-        newChartConfigs.type = "maps/oceania";
-        break;
-      case MapTypes.AFRICA:
-        newChartConfigs.type = "maps/africa";
-        break;
-
-      default:
-        newChartConfigs.type = "maps/world";
-        break;
+    if (!isLoading && !!echarts.getMap(type)) {
+      chartInstance.current?.setOption(
+        getChartOption(
+          caption,
+          showLabels,
+          colorRangePieces,
+          transformedData,
+          type,
+          props.height,
+          props.width,
+          fontFamily,
+        ),
+        true,
+      );
     }
+  }, [
+    isLoading,
+    caption,
+    showLabels,
+    colorRangePieces,
+    transformedData,
+    fontFamily,
+    chartInstance.current,
+    type,
+    key,
+    props.height,
+    props.width,
+  ]);
 
-    if (type === MapTypes.WORLD) {
-      setChartConfigs(newChartConfigs);
-      return;
-    }
-
-    initializeMap(newChartConfigs);
-  }, [JSON.stringify(data), type]);
-
-  // Called by FC-React component to return the rendered chart
-  const renderComplete = (chart: FusionCharts.FusionCharts) => {
-    setChart(chart);
-  };
-
-  const initializeMap = (configs: ChartObject) => {
-    const { type: mapType } = configs;
-    if (mapType) {
-      const alias = mapType.substring(5);
-      const mapDefinition = CUSTOM_MAP_PLUGINS[alias];
-      ReactFC.fcRoot(FusionCharts, FusionMaps, mapDefinition, FusionTheme);
-      setChartConfigs(configs);
-    }
-  };
+  useEffect(() => {
+    chartInstance.current?.resize({
+      width: props.width,
+      height: props.height,
+    });
+  }, [props.width, props.height]);
 
   return (
     <MapChartContainer
       borderRadius={props.borderRadius}
       boxShadow={props.boxShadow}
+      className={clsx({
+        "bp3-skeleton": isLoading,
+      })}
+      data-testid="t--map-chart-container"
+      onClick={(e) => e.stopPropagation()}
     >
-      <ReactFC {...chartConfigs} onRender={renderComplete} />
+      <div ref={chartContainer} />
     </MapChartContainer>
   );
 }
@@ -218,11 +166,14 @@ export interface MapChartComponentProps {
   colorRange: MapColorObject[];
   data: MapData[];
   isVisible: boolean;
+  // TODO: Fix this the next time the file is edited
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onDataPointClick: (evt: any) => void;
   showLabels: boolean;
-  type: MapType;
+  type: MapTypes;
   borderRadius?: string;
   boxShadow?: string;
+  fontFamily?: string;
+  height: number;
+  width: number;
 }
-
-export default MapChartComponent;

@@ -5,6 +5,7 @@ import com.appsmith.external.exceptions.pluginExceptions.AppsmithPluginError;
 import com.appsmith.external.exceptions.pluginExceptions.AppsmithPluginException;
 import com.appsmith.external.helpers.DataTypeStringUtils;
 import com.appsmith.external.helpers.MustacheHelper;
+import com.appsmith.external.helpers.PluginUtils;
 import com.appsmith.external.models.ActionConfiguration;
 import com.appsmith.external.models.ActionExecutionRequest;
 import com.appsmith.external.models.ActionExecutionResult;
@@ -12,11 +13,15 @@ import com.appsmith.external.models.DBAuth;
 import com.appsmith.external.models.DatasourceConfiguration;
 import com.appsmith.external.models.DatasourceStructure;
 import com.appsmith.external.models.DatasourceTestResult;
+import com.appsmith.external.models.MustacheBindingToken;
 import com.appsmith.external.models.PaginationField;
+import com.appsmith.external.models.Param;
 import com.appsmith.external.models.RequestParamDTO;
 import com.appsmith.external.plugins.BasePlugin;
 import com.appsmith.external.plugins.PluginExecutor;
 import com.appsmith.external.plugins.SmartSubstitutionInterface;
+import com.external.plugins.exceptions.FirestoreErrorMessages;
+import com.external.plugins.exceptions.FirestorePluginError;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.api.core.ApiFuture;
 import com.google.auth.oauth2.GoogleCredentials;
@@ -25,6 +30,7 @@ import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.FieldValue;
 import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.FirestoreException;
 import com.google.cloud.firestore.Query;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteResult;
@@ -58,9 +64,9 @@ import java.util.stream.StreamSupport;
 
 import static com.appsmith.external.constants.ActionConstants.ACTION_CONFIGURATION_BODY;
 import static com.appsmith.external.constants.ActionConstants.ACTION_CONFIGURATION_PATH;
-import static com.appsmith.external.helpers.PluginUtils.getValueSafelyFromFormData;
-import static com.appsmith.external.helpers.PluginUtils.getValueSafelyFromFormDataOrDefault;
-import static com.appsmith.external.helpers.PluginUtils.setValueSafelyInFormData;
+import static com.appsmith.external.helpers.PluginUtils.STRING_TYPE;
+import static com.appsmith.external.helpers.PluginUtils.getDataValueSafelyFromFormData;
+import static com.appsmith.external.helpers.PluginUtils.setDataValueSafelyInFormData;
 import static com.external.constants.FieldName.BODY;
 import static com.external.constants.FieldName.COMMAND;
 import static com.external.constants.FieldName.DELETE_KEY_PATH;
@@ -68,13 +74,12 @@ import static com.external.constants.FieldName.END_BEFORE;
 import static com.external.constants.FieldName.LIMIT_DOCUMENTS;
 import static com.external.constants.FieldName.NEXT;
 import static com.external.constants.FieldName.ORDER_BY;
-import static com.external.constants.FieldName.SMART_SUBSTITUTION;
 import static com.external.constants.FieldName.PATH;
 import static com.external.constants.FieldName.PREV;
+import static com.external.constants.FieldName.SMART_SUBSTITUTION;
 import static com.external.constants.FieldName.START_AFTER;
 import static com.external.constants.FieldName.TIMESTAMP_VALUE_PATH;
 import static com.external.constants.FieldName.WHERE;
-import static com.external.constants.FieldName.WHERE_CHILDREN;
 import static com.external.utils.WhereConditionUtils.applyWhereConditional;
 import static java.lang.Boolean.TRUE;
 import static org.apache.commons.lang3.StringUtils.isBlank;
@@ -100,26 +105,30 @@ public class FirestorePlugin extends BasePlugin {
     @Extension
     public static class FirestorePluginExecutor implements PluginExecutor<Firestore>, SmartSubstitutionInterface {
 
-        private final Scheduler scheduler = Schedulers.elastic();
+        private final Scheduler scheduler = Schedulers.boundedElastic();
 
         @Override
         @Deprecated
-        public Mono<ActionExecutionResult> execute(Firestore connection,
-                                                   DatasourceConfiguration datasourceConfiguration,
-                                                   ActionConfiguration actionConfiguration) {
-            return Mono.error(new AppsmithPluginException(AppsmithPluginError.PLUGIN_ERROR, "Unsupported Operation"));
+        public Mono<ActionExecutionResult> execute(
+                Firestore connection,
+                DatasourceConfiguration datasourceConfiguration,
+                ActionConfiguration actionConfiguration) {
+            return Mono.error(
+                    new AppsmithPluginException(FirestorePluginError.QUERY_EXECUTION_FAILED, "Unsupported Operation"));
         }
 
         @Override
-        public Object substituteValueInInput(int index,
-                                             String binding,
-                                             String value,
-                                             Object input,
-                                             List<Map.Entry<String, String>> insertedParams,
-                                             Object... args) {
+        public Object substituteValueInInput(
+                int index,
+                String binding,
+                String value,
+                Object input,
+                List<Map.Entry<String, String>> insertedParams,
+                Object... args) {
             String jsonBody = (String) input;
-            return DataTypeStringUtils.jsonSmartReplacementPlaceholderWithValue(jsonBody, value, null, insertedParams,
-                    null);
+            Param param = (Param) args[0];
+            return DataTypeStringUtils.jsonSmartReplacementPlaceholderWithValue(
+                    jsonBody, value, null, insertedParams, null, param);
         }
 
         @Override
@@ -129,6 +138,7 @@ public class FirestorePlugin extends BasePlugin {
                 DatasourceConfiguration datasourceConfiguration,
                 ActionConfiguration actionConfiguration) {
 
+            log.debug(Thread.currentThread().getName() + ": executeParameterized() called for Firestore plugin.");
             Object smartSubstitutionObject = actionConfiguration.getFormData().getOrDefault(SMART_SUBSTITUTION, TRUE);
             Boolean smartJsonSubstitution = TRUE;
             if (smartSubstitutionObject instanceof Boolean) {
@@ -142,28 +152,26 @@ public class FirestorePlugin extends BasePlugin {
             // Smartly substitute in actionConfiguration.body and replace all the bindings with values.
             List<Map.Entry<String, String>> parameters = new ArrayList<>();
             if (TRUE.equals(smartJsonSubstitution)) {
-                String query = getValueSafelyFromFormData(actionConfiguration.getFormData(), BODY, String.class);
+                String query = PluginUtils.getDataValueSafelyFromFormData(
+                        actionConfiguration.getFormData(), BODY, STRING_TYPE);
                 if (query != null) {
 
                     // First extract all the bindings in order
-                    List<String> mustacheKeysInOrder = MustacheHelper.extractMustacheKeysInOrder(query);
+                    List<MustacheBindingToken> mustacheKeysInOrder = MustacheHelper.extractMustacheKeysInOrder(query);
                     // Replace all the bindings with a ? as expected in a prepared statement.
                     String updatedQuery = MustacheHelper.replaceMustacheWithPlaceholder(query, mustacheKeysInOrder);
 
                     try {
-                        updatedQuery = (String) smartSubstitutionOfBindings(updatedQuery,
-                                mustacheKeysInOrder,
-                                executeActionDTO.getParams(),
-                                parameters);
+                        updatedQuery = (String) smartSubstitutionOfBindings(
+                                updatedQuery, mustacheKeysInOrder, executeActionDTO.getParams(), parameters);
                     } catch (AppsmithPluginException e) {
                         ActionExecutionResult errorResult = new ActionExecutionResult();
                         errorResult.setIsExecutionSuccess(false);
                         errorResult.setErrorInfo(e);
-                        errorResult.setStatusCode(AppsmithPluginError.PLUGIN_ERROR.getAppErrorCode().toString());
                         return Mono.just(errorResult);
                     }
 
-                    setValueSafelyInFormData(actionConfiguration.getFormData(), BODY, updatedQuery);
+                    setDataValueSafelyInFormData(actionConfiguration.getFormData(), BODY, updatedQuery);
                 }
             }
 
@@ -174,21 +182,17 @@ public class FirestorePlugin extends BasePlugin {
 
             Map<String, Object> formData = actionConfiguration.getFormData();
 
-            String query = (String) getValueSafelyFromFormDataOrDefault(formData, BODY, "");
+            String query = getDataValueSafelyFromFormData(formData, BODY, STRING_TYPE, "");
 
-            final String path = (String) getValueSafelyFromFormDataOrDefault(formData, PATH, "");
+            final String path = getDataValueSafelyFromFormData(formData, PATH, STRING_TYPE, "");
             requestData.put("path", path);
 
-            String command = getValueSafelyFromFormData(formData, COMMAND, String.class);
+            String command = PluginUtils.getDataValueSafelyFromFormData(formData, COMMAND, STRING_TYPE);
 
             if (isBlank(command)) {
-                return Mono.error(
-                        new AppsmithPluginException(
-                                AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                                "Mandatory parameter 'Command' is missing. Did you forget to select one of the commands" +
-                                        " from the Command dropdown ?"
-                        )
-                );
+                return Mono.error(new AppsmithPluginException(
+                        AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
+                        FirestoreErrorMessages.MANDATORY_PARAM_COMMAND_MISSING_ERROR_MSG));
             }
 
             requestData.put("command", command);
@@ -198,37 +202,33 @@ public class FirestorePlugin extends BasePlugin {
             requestParams.add(new RequestParamDTO(COMMAND, command, null, null, null));
             requestParams.add(new RequestParamDTO(ACTION_CONFIGURATION_PATH, path, null, null, null));
 
-            final PaginationField paginationField = executeActionDTO == null ? null : executeActionDTO.getPaginationField();
+            final PaginationField paginationField =
+                    executeActionDTO == null ? null : executeActionDTO.getPaginationField();
 
             Set<String> hintMessages = new HashSet<>();
 
-            return Mono
-                    .justOrEmpty(query)
+            return Mono.justOrEmpty(query)
                     .flatMap(strBody -> {
-
                         if (method == null) {
                             return Mono.error(new AppsmithPluginException(
                                     AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                                    "Missing Firestore method."
-                            ));
+                                    FirestoreErrorMessages.MISSING_FIRESTORE_METHOD_ERROR_MSG));
                         }
 
                         if (isBlank(path)) {
                             return Mono.error(new AppsmithPluginException(
                                     AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                                    "Document/Collection path cannot be empty"
-                            ));
+                                    FirestoreErrorMessages.EMPTY_DOC_OR_COLLECTION_PATH_ERROR_MSG));
                         }
 
                         if (path.startsWith("/") || path.endsWith("/")) {
                             return Mono.error(new AppsmithPluginException(
                                     AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                                    "Firestore paths should not begin or end with `/` character."
-                            ));
+                                    FirestoreErrorMessages.FIRESTORE_PATH_INVALID_STARTING_CHAR_ERROR_MSG));
                         }
 
                         if (isBlank(strBody)) {
-                            switch(method) {
+                            switch (method) {
                                 case UPDATE_DOCUMENT:
                                 case CREATE_DOCUMENT:
                                 case ADD_TO_COLLECTION:
@@ -245,33 +245,34 @@ public class FirestorePlugin extends BasePlugin {
                         }
 
                         try {
+                            log.debug(Thread.currentThread().getName()
+                                    + ": objectMapper.readValue invoked from Firestore plugin.");
                             return Mono.just(objectMapper.readValue(strBody, HashMap.class));
                         } catch (IOException e) {
                             return Mono.error(new AppsmithPluginException(
                                     AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                                    e.getMessage()
-                            ));
+                                    FirestoreErrorMessages.QUERY_CONVERSION_TO_HASHMAP_FAILED_ERROR_MSG,
+                                    e.getMessage()));
                         }
                     })
                     .flatMap(mapBody -> {
-
                         if (mapBody.isEmpty()) {
 
-                            if(method.isBodyNeeded()) {
+                            if (method.isBodyNeeded()) {
                                 return Mono.error(new AppsmithPluginException(
                                         AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                                        "The method " + method + " needs a non-empty body to work."
-                                ));
+                                        String.format(
+                                                FirestoreErrorMessages.NON_EMPTY_BODY_REQUIRED_FOR_METHOD_ERROR_MSG,
+                                                method)));
                             }
 
                             if (isSetOrUpdateOrCreateOrAddMethod(method)
                                     && isTimestampAndDeleteFieldValuePathEmpty(formData)) {
                                 return Mono.error(new AppsmithPluginException(
                                         AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                                        "The method " + method + " needs at least one of the following " +
-                                                "fields to be non-empty: 'Timestamp Value Path', 'Delete Key Value " +
-                                                "Pair Path', 'Body'"
-                                ));
+                                        String.format(
+                                                FirestoreErrorMessages.NON_EMPTY_FIELD_REQUIRED_FOR_METHOD_ERROR_MSG,
+                                                method)));
                             }
                         }
 
@@ -290,18 +291,35 @@ public class FirestorePlugin extends BasePlugin {
                         if (method.isDocumentLevel()) {
                             return handleDocumentLevelMethod(connection, path, method, mapBody, query, requestParams);
                         } else {
-                            return handleCollectionLevelMethod(connection, path, method, formData, mapBody,
-                                    paginationField, query, requestParams, hintMessages, actionConfiguration);
+                            return handleCollectionLevelMethod(
+                                    connection,
+                                    path,
+                                    method,
+                                    formData,
+                                    mapBody,
+                                    paginationField,
+                                    query,
+                                    requestParams,
+                                    hintMessages,
+                                    actionConfiguration);
                         }
                     })
-                    .onErrorResume(error  -> {
+                    .onErrorResume(error -> {
                         ActionExecutionResult result = new ActionExecutionResult();
                         result.setIsExecutionSuccess(false);
+                        if (!(error instanceof AppsmithPluginException)) {
+                            error = new AppsmithPluginException(
+                                    FirestorePluginError.QUERY_EXECUTION_FAILED,
+                                    FirestoreErrorMessages.QUERY_EXECUTION_FAILED_ERROR_MSG,
+                                    error);
+                        }
                         result.setErrorInfo(error);
                         return Mono.just(result);
                     })
-                    // Now set the request in the result to be returned back to the server
+                    // Now set the request in the result to be returned to the server
                     .map(result -> {
+                        log.debug(Thread.currentThread().getName()
+                                + ": setting the request in action execution result from Firestore plugin.");
                         ActionExecutionRequest request = new ActionExecutionRequest();
                         request.setProperties(requestData);
                         request.setQuery(query);
@@ -314,8 +332,8 @@ public class FirestorePlugin extends BasePlugin {
         }
 
         private boolean isTimestampAndDeleteFieldValuePathEmpty(Map<String, Object> formData) {
-            if (isBlank(getValueSafelyFromFormData(formData, TIMESTAMP_VALUE_PATH, String.class))
-                    && isBlank(getValueSafelyFromFormData(formData, DELETE_KEY_PATH, String.class))) {
+            if (isBlank(PluginUtils.getDataValueSafelyFromFormData(formData, TIMESTAMP_VALUE_PATH, STRING_TYPE))
+                    && isBlank(PluginUtils.getDataValueSafelyFromFormData(formData, DELETE_KEY_PATH, STRING_TYPE))) {
                 return true;
             }
 
@@ -323,49 +341,50 @@ public class FirestorePlugin extends BasePlugin {
         }
 
         private boolean isSetOrUpdateOrCreateOrAddMethod(Method method) {
-            return Method.SET_DOCUMENT.equals(method) || Method.UPDATE_DOCUMENT.equals(method)
-                    || Method.CREATE_DOCUMENT.equals(method) || Method.ADD_TO_COLLECTION.equals(method);
+            return Method.SET_DOCUMENT.equals(method)
+                    || Method.UPDATE_DOCUMENT.equals(method)
+                    || Method.CREATE_DOCUMENT.equals(method)
+                    || Method.ADD_TO_COLLECTION.equals(method);
         }
 
         /*
          * - Update mapBody with FieldValue.xyz() values if the FieldValue paths are provided.
          */
-        private void insertFieldValues(Map<String, Object> mapBody,
-                                       Map<String, Object> formData,
-                                       Method method,
-                                       List<RequestParamDTO> requestParams) throws AppsmithPluginException {
+        private void insertFieldValues(
+                Map<String, Object> mapBody,
+                Map<String, Object> formData,
+                Method method,
+                List<RequestParamDTO> requestParams)
+                throws AppsmithPluginException {
 
             /*
              * - Check that FieldValue.delete() option is only available for UPDATE operation.
              */
             if (!Method.UPDATE_DOCUMENT.equals(method)
-                    && !isBlank(getValueSafelyFromFormData(formData, DELETE_KEY_PATH, String.class))) {
+                    && !isBlank(PluginUtils.getDataValueSafelyFromFormData(formData, DELETE_KEY_PATH, STRING_TYPE))) {
                 throw new AppsmithPluginException(
-                        AppsmithPluginError.PLUGIN_ERROR,
-                        "Appsmith has found an unexpected query form property - 'Delete Key Value Pair Path'. Please " +
-                                "reach out to Appsmith customer support to resolve this."
-                );
+                        AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
+                        FirestoreErrorMessages.UNEXPECTED_PROPERTY_DELETE_KEY_PATH_ERROR_MSG);
             }
 
             /*
              * - Parse delete path.
              */
-            if(!isBlank(getValueSafelyFromFormData(formData, DELETE_KEY_PATH, String.class))) {
-                String deletePaths = getValueSafelyFromFormData(formData, DELETE_KEY_PATH, String.class);
+            if (!isBlank(PluginUtils.getDataValueSafelyFromFormData(formData, DELETE_KEY_PATH, STRING_TYPE))) {
+                String deletePaths = PluginUtils.getDataValueSafelyFromFormData(formData, DELETE_KEY_PATH, STRING_TYPE);
                 requestParams.add(new RequestParamDTO(DELETE_KEY_PATH, deletePaths, null, null, null));
                 List<String> deletePathsList;
                 try {
-                    deletePathsList = objectMapper.readValue(deletePaths, new TypeReference<List<String>>(){});
+                    deletePathsList = objectMapper.readValue(deletePaths, new TypeReference<List<String>>() {});
                 } catch (IOException e) {
                     throw new AppsmithPluginException(
                             AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                            "Appsmith failed to parse the query editor form field 'Delete Key Value Pair Path'. " +
-                                    "Please check out Appsmith's documentation to find the correct syntax."
-                    );
+                            FirestoreErrorMessages.FAILED_TO_PARSE_DELETE_KEY_PATH_ERROR_MSG,
+                            e.getMessage());
                 }
 
                 /*
-                 * - Update all of the map body keys that need to be deleted.
+                 * - Update all the map body keys that need to be deleted.
                  * - This way of denoting a nested path via a "." (dot) notation can only be directly used for a update
                  *   operation. e.g. {"key1.key2": FieldValue.delete()}
                  * - dot notation is used with FieldValue.delete() because otherwise it is not possible to delete
@@ -373,38 +392,36 @@ public class FirestorePlugin extends BasePlugin {
                  * - dot notation is safe to use with delete FieldValue because this FieldValue only works with update
                  *   operation.
                  */
-                deletePathsList.stream()
-                        .forEach(path -> mapBody.put(path, FieldValue.delete()));
+                deletePathsList.stream().forEach(path -> mapBody.put(path, FieldValue.delete()));
             }
 
             /*
              * - Check that FieldValue.serverTimestamp() option is not available for any GET or DELETE operations.
              */
             if (isGetOrDeleteMethod(method)
-                    && !isBlank(getValueSafelyFromFormData(formData, TIMESTAMP_VALUE_PATH, String.class))) {
+                    && !isBlank(
+                            PluginUtils.getDataValueSafelyFromFormData(formData, TIMESTAMP_VALUE_PATH, STRING_TYPE))) {
                 throw new AppsmithPluginException(
-                        AppsmithPluginError.PLUGIN_ERROR,
-                        "Appsmith has found an unexpected query form property - 'Timestamp Value Path'. Please reach " +
-                                "out to Appsmith customer support to resolve this."
-                );
+                        AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
+                        FirestoreErrorMessages.UNEXPECTED_PROPERTY_TIMESTAMP_ERROR_MSG);
             }
 
             /*
              * - Parse severTimestamp FieldValue path.
              */
-            if(!isBlank(getValueSafelyFromFormData(formData, TIMESTAMP_VALUE_PATH, String.class))) {
-                String timestampValuePaths = getValueSafelyFromFormData(formData, TIMESTAMP_VALUE_PATH, String.class);
+            if (!isBlank(PluginUtils.getDataValueSafelyFromFormData(formData, TIMESTAMP_VALUE_PATH, STRING_TYPE))) {
+                String timestampValuePaths =
+                        PluginUtils.getDataValueSafelyFromFormData(formData, TIMESTAMP_VALUE_PATH, STRING_TYPE);
                 requestParams.add(new RequestParamDTO(TIMESTAMP_VALUE_PATH, timestampValuePaths, null, null, null));
                 List<String> timestampPathsStringList; // ["key1.key2", "key3.key4"]
                 try {
-                    timestampPathsStringList = objectMapper.readValue(timestampValuePaths,
-                            new TypeReference<List<String>>(){});
+                    timestampPathsStringList =
+                            objectMapper.readValue(timestampValuePaths, new TypeReference<List<String>>() {});
                 } catch (IOException e) {
                     throw new AppsmithPluginException(
                             AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                            "Appsmith failed to parse the query editor form field 'Timestamp Value Path'. " +
-                                    "Please check out Appsmith's documentation to find the correct syntax."
-                    );
+                            FirestoreErrorMessages.FAILED_TO_PARSE_TIMESTAMP_VALUE_PATH_ERROR_MSG,
+                            e.getMessage());
                 }
 
                 /*
@@ -423,7 +440,8 @@ public class FirestorePlugin extends BasePlugin {
         }
 
         private boolean isGetOrDeleteMethod(Method method) {
-            return Method.GET_DOCUMENT.equals(method) || Method.GET_COLLECTION.equals(method)
+            return Method.GET_DOCUMENT.equals(method)
+                    || Method.GET_COLLECTION.equals(method)
                     || Method.DELETE_DOCUMENT.equals(method);
         }
 
@@ -432,9 +450,8 @@ public class FirestorePlugin extends BasePlugin {
          * - It iterates over the map body and replaces the value of keys defined by pathsList with a FieldValue
          *   entity defined by fieldValueName.
          */
-        private void insertFieldValueByMethodName(Map<String, Object> mapBody,
-                                            List<List<String>> pathsList,
-                                            String fieldValueName) {
+        private void insertFieldValueByMethodName(
+                Map<String, Object> mapBody, List<List<String>> pathsList, String fieldValueName) {
 
             pathsList.stream()
                     .filter(singlePathList -> !CollectionUtils.isEmpty(singlePathList))
@@ -444,34 +461,35 @@ public class FirestorePlugin extends BasePlugin {
                          *   if possible.
                          */
                         HashMap<String, Object> targetKeyValuePair = (HashMap<String, Object>) mapBody;
-                        for(int i=0; i<singlePathList.size()-1; i++) {
+                        for (int i = 0; i < singlePathList.size() - 1; i++) {
 
                             String key = singlePathList.get(i);
 
                             /*
                              * - Construct json object, if not present, based on the path provided.
                              */
-                            if(targetKeyValuePair.get(key) == null) {
+                            if (targetKeyValuePair.get(key) == null) {
                                 String nextKey = singlePathList.get(i + 1);
-                                targetKeyValuePair.put(key, new HashMap<>() {{put(nextKey, null);}});
+                                final Map<String, ?> pair = new HashMap<>();
+                                pair.put(nextKey, null);
+                                targetKeyValuePair.put(key, pair);
                             }
 
                             /*
                              * - Traverse nested json object.
                              */
-                            targetKeyValuePair = (HashMap<String, Object>)targetKeyValuePair.get(key);
+                            targetKeyValuePair = (HashMap<String, Object>) targetKeyValuePair.get(key);
                         }
 
                         try {
                             targetKeyValuePair.put(
-                                    singlePathList.get(singlePathList.size()-1),
+                                    singlePathList.get(singlePathList.size() - 1),
                                     /*
                                      * - As per Java documentation: If the underlying method is static, then the
                                      *   specified obj argument is ignored. It may be null.
                                      * - Ref: https://docs.oracle.com/javase/8/docs/api/java/lang/reflect/Method.html#invoke-java.lang.Object-java.lang.Object...-
                                      */
-                                    FieldValue.class.getMethod(fieldValueName).invoke(null)
-                            );
+                                    FieldValue.class.getMethod(fieldValueName).invoke(null));
                         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
                             /*
                              * - Please offer suggestions if this exception can be handled in a better way.
@@ -487,14 +505,13 @@ public class FirestorePlugin extends BasePlugin {
                 com.external.plugins.Method method,
                 Map<String, Object> mapBody,
                 String query,
-                List<RequestParamDTO> requestParams
-        ) {
+                List<RequestParamDTO> requestParams) {
+            log.debug(Thread.currentThread().getName() + ": handleDocumentLevelMethod() called for Firestore plugin.");
             return Mono.just(method)
                     // Get the actual Java method to be called.
                     .flatMap(method1 -> {
-
-
-                        final String methodName = method1.toString().split("_")[0].toLowerCase();
+                        final String methodName =
+                                method1.toString().split("_")[0].toLowerCase();
                         try {
                             switch (method1) {
                                 case GET_DOCUMENT:
@@ -503,22 +520,22 @@ public class FirestorePlugin extends BasePlugin {
                                 case SET_DOCUMENT:
                                 case CREATE_DOCUMENT:
                                 case UPDATE_DOCUMENT:
-                                    requestParams.add(new RequestParamDTO(ACTION_CONFIGURATION_BODY,  query, null,
-                                            null, null));
+                                    requestParams.add(
+                                            new RequestParamDTO(ACTION_CONFIGURATION_BODY, query, null, null, null));
                                     return Mono.justOrEmpty(DocumentReference.class.getMethod(methodName, Map.class));
                                 default:
                                     return Mono.error(new AppsmithPluginException(
-                                            AppsmithPluginError.PLUGIN_ERROR,
-                                            "Invalid document-level method " + method1.toString()
-                                    ));
+                                            FirestorePluginError.QUERY_EXECUTION_FAILED,
+                                            String.format(
+                                                    FirestoreErrorMessages.INVALID_DOCUMENT_LEVEL_METHOD_ERROR_MSG,
+                                                    method1)));
                             }
 
                         } catch (NoSuchMethodException e) {
                             return Mono.error(new AppsmithPluginException(
-                                    AppsmithPluginError.PLUGIN_ERROR,
-                                    "Error getting actual method for operation " + method1.toString()
-                            ));
-
+                                    FirestorePluginError.QUERY_EXECUTION_FAILED,
+                                    String.format(FirestoreErrorMessages.ACTUAL_METHOD_GETTING_ERROR_MSG, method1),
+                                    e.getMessage()));
                         }
                     })
                     // Call that method and get a Future of the result.
@@ -538,8 +555,10 @@ public class FirestorePlugin extends BasePlugin {
                              * - Printing the stack because e.getMessage() returns null for FieldValue errors.
                              */
                             e.printStackTrace();
-                            return Mono.error(new AppsmithPluginException(AppsmithPluginError.PLUGIN_ERROR, e.getMessage()));
-
+                            return Mono.error(new AppsmithPluginException(
+                                    FirestorePluginError.QUERY_EXECUTION_FAILED,
+                                    FirestoreErrorMessages.METHOD_INVOCATION_FAILED_ERROR_MSG,
+                                    e.getMessage()));
                         }
 
                         return Mono.just((ApiFuture<Object>) objFuture);
@@ -550,7 +569,10 @@ public class FirestorePlugin extends BasePlugin {
 
                             return Mono.just(resultFuture.get());
                         } catch (InterruptedException | ExecutionException e) {
-                            return Mono.error(new AppsmithPluginException(AppsmithPluginError.PLUGIN_ERROR, e.getMessage()));
+                            return Mono.error(new AppsmithPluginException(
+                                    FirestorePluginError.QUERY_EXECUTION_FAILED,
+                                    FirestoreErrorMessages.FAILURE_IN_GETTING_RESULT_FROM_FUTURE_ERROR_MSG,
+                                    e.getMessage()));
                         }
                     })
                     // Build a response object with the result.
@@ -562,9 +584,6 @@ public class FirestorePlugin extends BasePlugin {
                             return Mono.error(e);
                         }
                         result.setIsExecutionSuccess(true);
-                        System.out.println(
-                                Thread.currentThread().getName()
-                                        + ": In the Firestore Plugin, got action execution result");
                         return Mono.just(result);
                     });
         }
@@ -580,71 +599,85 @@ public class FirestorePlugin extends BasePlugin {
                 List<RequestParamDTO> requestParams,
                 Set<String> hintMessages,
                 ActionConfiguration actionConfiguration) {
-
+            log.debug(
+                    Thread.currentThread().getName() + ": handleCollectionLevelMethod() called for Firestore plugin.");
             final CollectionReference collection = connection.collection(path);
 
             if (method == Method.GET_COLLECTION) {
-                return methodGetCollection(collection, formData, paginationField, requestParams, hintMessages, actionConfiguration);
+                return methodGetCollection(
+                        collection, formData, paginationField, requestParams, hintMessages, actionConfiguration);
 
             } else if (method == Method.ADD_TO_COLLECTION) {
-                requestParams.add(new RequestParamDTO(ACTION_CONFIGURATION_BODY,  query, null, null, null));
+                requestParams.add(new RequestParamDTO(ACTION_CONFIGURATION_BODY, query, null, null, null));
                 return methodAddToCollection(collection, mapBody);
-
             }
 
             return Mono.error(new AppsmithPluginException(
-                    AppsmithPluginError.PLUGIN_ERROR,
-                    "Unsupported collection-level command: " + method
-            ));
+                    FirestorePluginError.QUERY_EXECUTION_FAILED,
+                    String.format(FirestoreErrorMessages.UNSUPPORTED_COLLECTION_METHOD_ERROR_MSG, method)));
         }
 
-        private Mono<ActionExecutionResult> methodGetCollection(CollectionReference query, Map<String, Object> formData,
-                                                                PaginationField paginationField,
-                                                                List<RequestParamDTO> requestParams,
-                                                                Set<String> hintMessages, ActionConfiguration actionConfiguration) {
-            final String limitString = getValueSafelyFromFormData(formData, LIMIT_DOCUMENTS, String.class);
+        private Mono<ActionExecutionResult> methodGetCollection(
+                CollectionReference query,
+                Map<String, Object> formData,
+                PaginationField paginationField,
+                List<RequestParamDTO> requestParams,
+                Set<String> hintMessages,
+                ActionConfiguration actionConfiguration) {
+            final String limitString =
+                    PluginUtils.getDataValueSafelyFromFormData(formData, LIMIT_DOCUMENTS, STRING_TYPE);
             final int limit = StringUtils.isEmpty(limitString) ? 10 : Integer.parseInt(limitString);
-            final String orderByString = getValueSafelyFromFormData(formData, ORDER_BY, String.class, "");
+            final String orderByString =
+                    PluginUtils.getDataValueSafelyFromFormData(formData, ORDER_BY, STRING_TYPE, "");
             requestParams.add(new RequestParamDTO(ORDER_BY, orderByString, null, null, null));
 
             final List<String> orderings;
             try {
-                orderings = StringUtils.isEmpty(orderByString) ? Collections.emptyList() : objectMapper.readValue(orderByString, List.class);
+                orderings = StringUtils.isEmpty(orderByString)
+                        ? Collections.emptyList()
+                        : objectMapper.readValue(orderByString, List.class);
             } catch (IOException e) {
                 // TODO: Investigate how many actions are using this today on prod.
-                return Mono.error(new AppsmithPluginException(AppsmithPluginError.PLUGIN_JSON_PARSE_ERROR, orderByString, e));
+                return Mono.error(
+                        new AppsmithPluginException(AppsmithPluginError.PLUGIN_JSON_PARSE_ERROR, orderByString, e));
             }
 
             Map<String, Object> startAfterTemp = null;
-            String startAfterJson = (String) getValueSafelyFromFormDataOrDefault(formData, NEXT, "{}");
+            String startAfterJson = getDataValueSafelyFromFormData(formData, NEXT, STRING_TYPE, "{}");
             if (StringUtils.isEmpty(startAfterJson)) {
                 startAfterJson = "{}";
             }
             requestParams.add(new RequestParamDTO(START_AFTER, startAfterJson, null, null, null));
             if (PaginationField.NEXT.equals(paginationField)) {
                 try {
-                    startAfterTemp = StringUtils.isEmpty(startAfterJson) ? Collections.emptyMap() : objectMapper.readValue(startAfterJson, Map.class);
+                    startAfterTemp = StringUtils.isEmpty(startAfterJson)
+                            ? Collections.emptyMap()
+                            : objectMapper.readValue(startAfterJson, Map.class);
                 } catch (IOException e) {
-                    return Mono.error(new AppsmithPluginException(AppsmithPluginError.PLUGIN_JSON_PARSE_ERROR, startAfterJson, e));
+                    return Mono.error(new AppsmithPluginException(
+                            AppsmithPluginError.PLUGIN_JSON_PARSE_ERROR, startAfterJson, e));
                 }
             }
 
             Map<String, Object> endBeforeTemp = null;
-            String endBeforeJson = (String) getValueSafelyFromFormDataOrDefault(formData, PREV, "{}");
+            String endBeforeJson = getDataValueSafelyFromFormData(formData, PREV, STRING_TYPE, "{}");
             if (StringUtils.isEmpty(endBeforeJson)) {
                 endBeforeJson = "{}";
             }
             requestParams.add(new RequestParamDTO(END_BEFORE, endBeforeJson, null, null, null));
             if (PaginationField.PREV.equals(paginationField)) {
                 try {
-                    endBeforeTemp = StringUtils.isEmpty(endBeforeJson) ? Collections.emptyMap() : objectMapper.readValue(endBeforeJson, Map.class);
+                    endBeforeTemp = StringUtils.isEmpty(endBeforeJson)
+                            ? Collections.emptyMap()
+                            : objectMapper.readValue(endBeforeJson, Map.class);
                 } catch (IOException e) {
-                    return Mono.error(new AppsmithPluginException(AppsmithPluginError.PLUGIN_JSON_PARSE_ERROR, endBeforeJson, e));
+                    return Mono.error(
+                            new AppsmithPluginException(AppsmithPluginError.PLUGIN_JSON_PARSE_ERROR, endBeforeJson, e));
                 }
             }
 
-            requestParams.add(new RequestParamDTO(LIMIT_DOCUMENTS, limitString == null ? "" : limitString, null, null
-                    , null));
+            requestParams.add(
+                    new RequestParamDTO(LIMIT_DOCUMENTS, limitString == null ? "" : limitString, null, null, null));
 
             final Map<String, Object> startAfter = startAfterTemp;
             final Map<String, Object> endBefore = endBeforeTemp;
@@ -652,54 +685,33 @@ public class FirestorePlugin extends BasePlugin {
             if (paginationField != null && CollectionUtils.isEmpty(orderings)) {
                 return Mono.error(new AppsmithPluginException(
                         AppsmithPluginError.PLUGIN_EXECUTE_ARGUMENT_ERROR,
-                        "Cannot do pagination without specifying an ordering."
-                ));
+                        FirestoreErrorMessages.PAGINATION_WITHOUT_SPECIFYING_ORDERING_ERROR_MSG));
             }
 
             return Mono.just(query)
-                    // Apply ordering, if provided.
-                    .map(query1 -> {
-                        Query q = query1;
-                        final List<Object> startAfterValues = new ArrayList<>();
-                        final List<Object> endBeforeValues = new ArrayList<>();
-                        for (final String field : orderings) {
-                            q = q.orderBy(
-                                    field.replaceAll("^-", ""),
-                                    field.startsWith("-") ? Query.Direction.DESCENDING : Query.Direction.ASCENDING
-                            );
-                            if (startAfter != null) {
-                                startAfterValues.add(startAfter.get(field));
-                            }
-                            if (endBefore != null) {
-                                endBeforeValues.add(endBefore.get(field));
-                            }
-                        }
-                        if (PaginationField.NEXT.equals(paginationField) && !CollectionUtils.isEmpty(startAfter)) {
-                            q = q.startAfter(startAfterValues.toArray());
-                        } else if (PaginationField.PREV.equals(paginationField) && !CollectionUtils.isEmpty(endBefore)) {
-                            q = q.endBefore(endBeforeValues.toArray());
-                        }
-                        return q;
-                    })
                     // Apply where condition, if provided.
-                    .flatMap(query1 -> {
+                    .flatMap(q -> {
+                        Query query1 = q;
                         if (!isWhereMethodUsed(formData)) {
                             return Mono.just(query1);
                         }
 
-                        List<Object> conditionList = getValueSafelyFromFormData(formData, WHERE_CHILDREN, List.class,
-                                new ArrayList());
+                        Map<String, List<Map<String, String>>> childrenMap =
+                                PluginUtils.getDataValueSafelyFromFormData(formData, WHERE, new TypeReference<>() {});
+                        final List<Map<String, String>> conditionList = childrenMap.get("children");
                         requestParams.add(new RequestParamDTO(WHERE, conditionList, null, null, null));
 
-                        for(Object condition : conditionList) {
-                            String path = ((Map<String, String>)condition).get("key");
-                            String operatorString = ((Map<String, String>)condition).get("condition");
-                            String value = ((Map<String, String>)condition).get("value");
+                        for (Map<String, String> condition : conditionList) {
+                            String path = condition.get("key");
+                            String operatorString = condition.get("condition");
+                            String value = condition.get("value");
 
-                            if (StringUtils.isEmpty(path) || StringUtils.isEmpty(operatorString) || StringUtils.isEmpty(value)) {
-                                String emptyConditionMessage = "At least one of the conditions in the 'where' clause " +
-                                        "has missing operator or operand(s). These conditions were ignored during the" +
-                                        " execution of the query.";
+                            if (StringUtils.isEmpty(path)
+                                    || StringUtils.isEmpty(operatorString)
+                                    || StringUtils.isEmpty(value)) {
+                                String emptyConditionMessage = "At least one of the conditions in the 'where' clause "
+                                        + "has missing operator or operand(s). These conditions were ignored during the"
+                                        + " execution of the query.";
                                 hintMessages.add(emptyConditionMessage);
                                 continue;
                             }
@@ -713,7 +725,32 @@ public class FirestorePlugin extends BasePlugin {
 
                         return Mono.just(query1);
                     })
-                    // Apply limit, always provided, since without it we can inadvertently end up processing too much data.
+                    // Apply ordering, if provided.
+                    .map(query1 -> {
+                        Query q = query1;
+                        final List<Object> startAfterValues = new ArrayList<>();
+                        final List<Object> endBeforeValues = new ArrayList<>();
+                        for (final String field : orderings) {
+                            q = q.orderBy(
+                                    field.replaceAll("^-", ""),
+                                    field.startsWith("-") ? Query.Direction.DESCENDING : Query.Direction.ASCENDING);
+                            if (startAfter != null) {
+                                startAfterValues.add(startAfter.get(field));
+                            }
+                            if (endBefore != null) {
+                                endBeforeValues.add(endBefore.get(field));
+                            }
+                        }
+                        if (PaginationField.NEXT.equals(paginationField) && !CollectionUtils.isEmpty(startAfter)) {
+                            q = q.startAfter(startAfterValues.toArray());
+                        } else if (PaginationField.PREV.equals(paginationField)
+                                && !CollectionUtils.isEmpty(endBefore)) {
+                            q = q.endBefore(endBeforeValues.toArray());
+                        }
+                        return q;
+                    })
+                    // Apply limit, always provided, since without it, we can inadvertently end up processing too much
+                    // data.
                     .map(query1 -> {
                         if (PaginationField.PREV.equals(paginationField) && !CollectionUtils.isEmpty(endBefore)) {
                             return query1.limitToLast(limit);
@@ -727,7 +764,10 @@ public class FirestorePlugin extends BasePlugin {
                         try {
                             return Mono.just(resultFuture.get());
                         } catch (InterruptedException | ExecutionException e) {
-                            return Mono.error(new AppsmithPluginException(AppsmithPluginError.PLUGIN_ERROR, e.getMessage()));
+                            return Mono.error(new AppsmithPluginException(
+                                    FirestorePluginError.QUERY_EXECUTION_FAILED,
+                                    FirestoreErrorMessages.FAILURE_IN_GETTING_RESULT_FROM_FUTURE_ERROR_MSG,
+                                    e.getMessage()));
                         }
                     })
                     // Build response object with the results from the Future.
@@ -739,17 +779,18 @@ public class FirestorePlugin extends BasePlugin {
                             return Mono.error(e);
                         }
                         result.setIsExecutionSuccess(true);
-                        System.out.println(
-                                Thread.currentThread().getName()
-                                        + ": In the Firestore Plugin, got action execution result for get collection"
-                        );
                         return Mono.just(result);
                     });
         }
 
         private boolean isWhereMethodUsed(Map<String, Object> formData) {
-            List<Object> conditionList = getValueSafelyFromFormData(formData, WHERE_CHILDREN, List.class,
-                    new ArrayList());
+            final Map<String, List<Object>> childrenMap =
+                    getDataValueSafelyFromFormData(formData, WHERE, new TypeReference<>() {});
+
+            if (childrenMap == null || childrenMap.isEmpty()) {
+                return false;
+            }
+            List<Object> conditionList = childrenMap.get("children");
 
             // Check if the where clause does not exist
             if (CollectionUtils.isEmpty(conditionList)) {
@@ -757,8 +798,8 @@ public class FirestorePlugin extends BasePlugin {
             }
 
             // Check if all keys in the where clause are null.
-            boolean allValuesNull = conditionList.stream()
-                    .allMatch(condition -> isBlank((String) ((Map) condition).get("key")));
+            boolean allValuesNull =
+                    conditionList.stream().allMatch(condition -> isBlank((String) ((Map) condition).get("key")));
 
             if (allValuesNull) {
                 return false;
@@ -767,16 +808,17 @@ public class FirestorePlugin extends BasePlugin {
             return true;
         }
 
-        private Mono<ActionExecutionResult> methodAddToCollection(CollectionReference collection, Map<String, Object> mapBody) {
+        private Mono<ActionExecutionResult> methodAddToCollection(
+                CollectionReference collection, Map<String, Object> mapBody) {
             return Mono.justOrEmpty(collection.add(mapBody))
                     .flatMap(future -> {
                         try {
                             return Mono.just(future.get());
                         } catch (InterruptedException | ExecutionException e) {
                             return Mono.error(new AppsmithPluginException(
-                                    AppsmithPluginError.PLUGIN_ERROR,
-                                    e.getMessage()
-                            ));
+                                    FirestorePluginError.QUERY_EXECUTION_FAILED,
+                                    FirestoreErrorMessages.FAILURE_IN_GETTING_RESULT_FROM_FUTURE_ERROR_MSG,
+                                    e.getMessage()));
                         }
                     })
                     .flatMap(opResult -> {
@@ -787,10 +829,6 @@ public class FirestorePlugin extends BasePlugin {
                             return Mono.error(e);
                         }
                         result.setIsExecutionSuccess(true);
-                        System.out.println(
-                                Thread.currentThread().getName()
-                                        + ": In the Firestore Plugin, got action execution result for add to collection"
-                        );
                         return Mono.just(result);
                     });
         }
@@ -812,7 +850,8 @@ public class FirestorePlugin extends BasePlugin {
                 Map<String, Object> resultMap = new HashMap<>();
                 resultMap.put("_ref", resultToMap(documentSnapshot.getReference()));
                 if (documentSnapshot.getData() != null) {
-                    for (final Map.Entry<String, Object> entry : documentSnapshot.getData().entrySet()) {
+                    for (final Map.Entry<String, Object> entry :
+                            documentSnapshot.getData().entrySet()) {
                         resultMap.put(entry.getKey(), resultToMap(entry.getValue(), false));
                     }
                 }
@@ -827,8 +866,7 @@ public class FirestorePlugin extends BasePlugin {
                 DocumentReference documentReference = (DocumentReference) objResult;
                 return Map.of(
                         "id", documentReference.getId(),
-                        "path", documentReference.getPath()
-                );
+                        "path", documentReference.getPath());
 
             } else if (objResult instanceof Map) {
                 Map<String, Object> resultMap = (Map) objResult;
@@ -847,10 +885,10 @@ public class FirestorePlugin extends BasePlugin {
 
             } else if (isRoot) {
                 throw new AppsmithPluginException(
-                        AppsmithPluginError.PLUGIN_ERROR,
-                        "Unable to serialize object of type " + objResult.getClass().getName() + "."
-                );
-
+                        FirestorePluginError.QUERY_EXECUTION_FAILED,
+                        String.format(
+                                FirestoreErrorMessages.OBJECT_SERIALIZATION_FAILED_ERROR_MSG,
+                                objResult.getClass().getName()));
             }
 
             return objResult;
@@ -858,11 +896,13 @@ public class FirestorePlugin extends BasePlugin {
 
         @Override
         public Mono<Firestore> datasourceCreate(DatasourceConfiguration datasourceConfiguration) {
+            log.debug(Thread.currentThread().getName() + ": datasourceCreate() called for Firestore plugin.");
             final DBAuth authentication = (DBAuth) datasourceConfiguration.getAuthentication();
 
             final Set<String> errors = validateDatasource(datasourceConfiguration);
             if (!CollectionUtils.isEmpty(errors)) {
-                return Mono.error(new AppsmithPluginException(AppsmithPluginError.PLUGIN_DATASOURCE_ARGUMENT_ERROR,
+                return Mono.error(new AppsmithPluginException(
+                        AppsmithPluginError.PLUGIN_DATASOURCE_ARGUMENT_ERROR,
                         errors.iterator().next()));
             }
 
@@ -871,17 +911,17 @@ public class FirestorePlugin extends BasePlugin {
 
             InputStream serviceAccount = new ByteArrayInputStream(clientJson.getBytes());
 
-            return Mono
-                    .fromSupplier(() -> {
+            return Mono.fromSupplier(() -> {
+                        log.debug(Thread.currentThread().getName()
+                                + ": instantiating googlecredentials object from Firestore plugin.");
                         GoogleCredentials credentials;
                         try {
                             credentials = GoogleCredentials.fromStream(serviceAccount);
                         } catch (IOException e) {
                             throw Exceptions.propagate(new AppsmithPluginException(
                                     AppsmithPluginError.PLUGIN_DATASOURCE_ARGUMENT_ERROR,
-                                    "Validation failed for field 'Service Account Credentials'. Please check the " +
-                                            "value provided in the 'Service Account Credentials' field."
-                            ));
+                                    FirestoreErrorMessages.DS_VALIDATION_FAILED_FOR_SERVICE_ACC_CREDENTIALS_ERROR_MSG,
+                                    e.getMessage()));
                         }
 
                         return FirebaseOptions.builder()
@@ -903,6 +943,27 @@ public class FirestorePlugin extends BasePlugin {
         }
 
         @Override
+        public Mono<DatasourceTestResult> testDatasource(DatasourceConfiguration datasourceConfiguration) {
+            log.debug(Thread.currentThread().getName() + ": testDatasource() called for Firestore plugin.");
+            return datasourceCreate(datasourceConfiguration).flatMap(connection -> {
+                try {
+                    connection.listCollections();
+                } catch (FirestoreException e) {
+                    log.error("Invalid datasource configuration: " + e.getMessage());
+                    if (e.getMessage().contains("Metadata operations require admin authentication")) {
+                        DatasourceTestResult datasourceTestResult = new DatasourceTestResult();
+                        datasourceTestResult.setMessages(new HashSet<>(
+                                Collections.singletonList(FirestoreErrorMessages.META_DATA_ACCESS_MISSING_MESSAGE)));
+                        return Mono.just(datasourceTestResult);
+                    }
+                    return Mono.just(
+                            new DatasourceTestResult(FirestoreErrorMessages.DS_CONNECTION_FAILED_FOR_PROJECT_ID));
+                }
+                return Mono.just(new DatasourceTestResult());
+            });
+        }
+
+        @Override
         public void datasourceDestroy(Firestore connection) {
             // This is empty because there's no concept of destroying a Firestore connection here.
             // When the datasource is updated, the FirebaseApp instance will delete & re-create the app
@@ -910,45 +971,42 @@ public class FirestorePlugin extends BasePlugin {
 
         @Override
         public Set<String> validateDatasource(DatasourceConfiguration datasourceConfiguration) {
+            log.debug(Thread.currentThread().getName() + ": validateDatasource() called for Firestore plugin.");
             final DBAuth authentication = (DBAuth) datasourceConfiguration.getAuthentication();
 
             Set<String> invalids = new HashSet<>();
 
             if (authentication == null) {
-                invalids.add("Missing ProjectID and ClientJSON in datasource.");
+                invalids.add(FirestoreErrorMessages.DS_MISSING_PROJECT_ID_AND_CLIENTJSON_ERROR_MSG);
 
             } else {
                 if (StringUtils.isEmpty(authentication.getUsername())) {
-                    invalids.add("Missing ProjectID in datasource.");
+                    invalids.add(FirestoreErrorMessages.DS_MISSING_PROJECT_ID_ERROR_MSG);
                 }
 
                 if (StringUtils.isEmpty(authentication.getPassword())) {
-                    invalids.add("Missing ClientJSON in datasource.");
+                    invalids.add(FirestoreErrorMessages.DS_MISSING_CLIENTJSON_ERROR_MSG);
                 }
-
             }
 
             if (isBlank(datasourceConfiguration.getUrl())) {
-                invalids.add("Missing Firestore URL.");
+                invalids.add(FirestoreErrorMessages.DS_MISSING_FIRESTORE_URL_ERROR_MSG);
             }
 
             return invalids;
         }
 
         @Override
-        public Mono<DatasourceTestResult> testDatasource(DatasourceConfiguration datasourceConfiguration) {
-            return datasourceCreate(datasourceConfiguration)
-                    .map(connection -> new DatasourceTestResult())
-                    .onErrorResume(error -> Mono.just(new DatasourceTestResult(error.getMessage())));
-        }
-
-        @Override
-        public Mono<DatasourceStructure> getStructure(Firestore connection, DatasourceConfiguration datasourceConfiguration) {
-            return Mono
-                    .fromSupplier(() -> {
+        public Mono<DatasourceStructure> getStructure(
+                Firestore connection, DatasourceConfiguration datasourceConfiguration) {
+            log.debug(Thread.currentThread().getName() + ": getStructure() called for Firestore plugin.");
+            return Mono.fromSupplier(() -> {
+                        log.debug(Thread.currentThread().getName()
+                                + ": invoking connection.listCollections() from Firestore plugin.");
                         Iterable<CollectionReference> collectionReferences = connection.listCollections();
 
-                        List<DatasourceStructure.Table> tables = StreamSupport.stream(collectionReferences.spliterator(), false)
+                        List<DatasourceStructure.Table> tables = StreamSupport.stream(
+                                        collectionReferences.spliterator(), false)
                                 .map(collectionReference -> {
                                     String id = collectionReference.getId();
                                     final ArrayList<DatasourceStructure.Template> templates = new ArrayList<>();
@@ -958,8 +1016,7 @@ public class FirestorePlugin extends BasePlugin {
                                             id,
                                             new ArrayList<>(),
                                             new ArrayList<>(),
-                                            templates
-                                    );
+                                            templates);
                                 })
                                 .collect(Collectors.toList());
 
@@ -969,6 +1026,12 @@ public class FirestorePlugin extends BasePlugin {
                         return structure;
                     })
                     .subscribeOn(scheduler);
+        }
+
+        @Override
+        public Set<String> getSelfReferencingDataPaths() {
+            return Set.of(
+                    "formData.prev.data", "formData.next.data", "formData.startAfter.data", "formData.endBefore.data");
         }
     }
 }

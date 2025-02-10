@@ -1,15 +1,14 @@
 import React from "react";
-import { Icon, Position } from "@blueprintjs/core";
+import { Icon } from "@blueprintjs/core";
 import { IconNames } from "@blueprintjs/icons";
 import styled from "styled-components";
 import Rating from "react-rating";
 import _ from "lodash";
 
-import { RateSize, RATE_SIZES } from "../constants";
-import TooltipComponent from "components/ads/Tooltip";
-import { disable } from "constants/DefaultTheme";
-import { ComponentProps } from "widgets/BaseComponent";
-import { Colors } from "constants/Colors";
+import type { RateSize } from "../constants";
+import { RATE_SIZES } from "../constants";
+import { TooltipComponent } from "@design-system/widgets-old";
+import type { ComponentProps } from "widgets/BaseComponent";
 
 /*
   Note:
@@ -21,6 +20,8 @@ import { Colors } from "constants/Colors";
 
 interface RateContainerProps {
   isDisabled: boolean;
+  readonly?: boolean;
+  minHeight?: number;
 }
 
 export const RateContainer = styled.div<RateContainerProps>`
@@ -30,6 +31,10 @@ export const RateContainer = styled.div<RateContainerProps>`
   justify-content: center;
   align-content: flex-start;
   overflow: auto;
+
+  ${({ minHeight }) => `
+    ${minHeight ? `min-height: ${minHeight}px;` : ""}
+  `};
 
   > span {
     display: flex !important;
@@ -50,10 +55,20 @@ export const RateContainer = styled.div<RateContainerProps>`
     }
   }
 
-  ${({ isDisabled }) => isDisabled && disable}
+  ${({ isDisabled }) =>
+    isDisabled &&
+    `cursor: not-allowed;
+    & > * {
+      pointer-events: none;
+    }
+  `}
 `;
 
-export const Star = styled(Icon)``;
+export const Star = styled(Icon)<{ isActive?: boolean; isDisabled?: boolean }>`
+  path {
+    stroke-width: ${(props) => (props.isActive ? "0" : "1px")};
+  }
+`;
 
 export interface RateComponentProps extends ComponentProps {
   value: number;
@@ -66,39 +81,58 @@ export interface RateComponentProps extends ComponentProps {
   inactiveColor?: string;
   isAllowHalf?: boolean;
   readonly?: boolean;
-  leftColumn?: number;
-  rightColumn?: number;
-  topRow?: number;
-  bottomRow?: number;
+  minHeight?: number;
 }
 
-function renderStarsWithTooltip(props: RateComponentProps) {
+const getIconColor = (props: RateComponentProps, isActive?: boolean) => {
+  const { activeColor, inactiveColor, isDisabled } = props;
+
+  if (isDisabled) {
+    return isActive
+      ? "var(--wds-color-bg-disabled-strong)"
+      : inactiveColor ?? "var(--wds-color-icon)";
+  }
+
+  return isActive
+    ? activeColor ?? "var(--wds-color-icon)"
+    : inactiveColor ?? "var(--wds-color-icon)";
+};
+
+function renderStarsWithTooltip(props: RateComponentProps, isActive?: boolean) {
   const rateTooltips = props.tooltips || [];
   const rateTooltipsCount = rateTooltips.length;
   const deltaCount = props.maxCount - rateTooltipsCount;
+
   if (rateTooltipsCount === 0) {
     return (
       <Star
-        color={props.activeColor}
+        color={getIconColor(props, isActive)}
         icon={IconNames.STAR}
         iconSize={RATE_SIZES[props.size]}
+        isActive={isActive}
+        isDisabled={props.isDisabled}
       />
     );
   }
+
   const starWithTooltip = rateTooltips.map((tooltip) => (
-    <TooltipComponent content={tooltip} key={tooltip} position={Position.TOP}>
+    <TooltipComponent content={tooltip} key={tooltip} position="top">
       <Star
-        color={props.activeColor}
+        color={getIconColor(props, isActive)}
         icon={IconNames.STAR}
         iconSize={RATE_SIZES[props.size]}
+        isActive={isActive}
+        isDisabled={props.isDisabled}
       />
     </TooltipComponent>
   ));
   const starWithoutTooltip = _.times(deltaCount, (num: number) => (
     <Star
-      color={props.activeColor}
+      color={getIconColor(props, isActive)}
       icon={IconNames.STAR}
       iconSize={RATE_SIZES[props.size]}
+      isActive={isActive}
+      isDisabled={props.isDisabled}
       key={num}
     />
   ));
@@ -110,28 +144,26 @@ function RateComponent(props: RateComponentProps) {
   const rateContainerRef = React.createRef<HTMLDivElement>();
 
   const {
-    inactiveColor,
     isAllowHalf,
     isDisabled,
     maxCount,
+    minHeight,
     onValueChanged,
     readonly,
-    size,
     value,
   } = props;
 
   return (
-    <RateContainer isDisabled={Boolean(isDisabled)} ref={rateContainerRef}>
+    <RateContainer
+      isDisabled={Boolean(isDisabled)}
+      minHeight={minHeight}
+      readonly={readonly}
+      ref={rateContainerRef}
+    >
       <Rating
-        emptySymbol={
-          <Star
-            color={inactiveColor || Colors.ALTO_3}
-            icon={IconNames.STAR}
-            iconSize={RATE_SIZES[size]}
-          />
-        }
+        emptySymbol={renderStarsWithTooltip(props, false)}
         fractions={isAllowHalf ? 2 : 1}
-        fullSymbol={renderStarsWithTooltip(props)}
+        fullSymbol={renderStarsWithTooltip(props, true)}
         initialRating={value}
         onChange={onValueChanged}
         readonly={readonly}

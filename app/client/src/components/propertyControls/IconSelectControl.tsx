@@ -1,46 +1,61 @@
 import * as React from "react";
 import styled, { createGlobalStyle } from "styled-components";
 import { Alignment, Button, Classes, MenuItem } from "@blueprintjs/core";
-import { IconName, IconNames } from "@blueprintjs/icons";
-import { ItemListRenderer, ItemRenderer, Select } from "@blueprintjs/select";
-import {
-  GridListProps,
-  VirtuosoGrid,
-  VirtuosoGridHandle,
-} from "react-virtuoso";
+import type { IconName } from "@blueprintjs/icons";
+import { IconNames } from "@blueprintjs/icons";
+import type { ItemListRenderer, ItemRenderer } from "@blueprintjs/select";
+import { Select } from "@blueprintjs/select";
+import type { GridListProps, VirtuosoGridHandle } from "react-virtuoso";
+import { VirtuosoGrid } from "react-virtuoso";
 
-import BaseControl, { ControlProps } from "./BaseControl";
-import TooltipComponent from "components/ads/Tooltip";
-import { Colors } from "constants/Colors";
+import type { ControlProps } from "./BaseControl";
+import BaseControl from "./BaseControl";
 import { replayHighlightClass } from "globalStyles/portals";
 import _ from "lodash";
+import { generateReactKey } from "utils/generators";
+import { emitInteractionAnalyticsEvent } from "utils/AppsmithUtils";
+import { Tooltip } from "@appsmith/ads";
 
 const IconSelectContainerStyles = createGlobalStyle<{
   targetWidth: number | undefined;
+  id: string;
 }>`
-  .bp3-select-popover {
-    width: ${({ targetWidth }) => targetWidth}px;
-    background: white;
+  ${({ id, targetWidth }) => `
+    .icon-select-popover-${id} {
+      width: ${targetWidth}px;
+      background: white;
 
-    .bp3-input-group {
-      margin: 5px !important;
+      .bp3-input-group {
+        margin: 5px !important;
+      }
     }
-  }
+    .bp3-button-text {
+      color: var(--ads-v2-color-fg) !important;
+    }
+    .bp3-icon {
+      color: var(--ads-v2-color-fg) !important;
+    }
+  `}
 `;
 
 const StyledButton = styled(Button)`
   box-shadow: none !important;
-  border: 1px solid ${Colors.GREY_5};
-  border-radius: 0;
+  border: 1px solid var(--ads-v2-color-border);
+  border-radius: var(--ads-v2-border-radius);
   height: 36px;
   background-color: #ffffff !important;
   > span.bp3-icon-caret-down {
     color: rgb(169, 167, 167);
   }
 
-  &:hover,
-  &:focus {
-    border: 1.2px solid var(--appsmith-input-focus-border-color);
+  &:hover {
+    border: 1px solid var(--ads-v2-color-border-emphasis);
+  }
+
+  &:focus-visible {
+    outline: var(--ads-v2-border-width-outline) solid
+      var(--ads-v2-color-outline);
+    outline-offset: var(--ads-v2-offset-outline);
   }
 `;
 
@@ -52,15 +67,6 @@ const StyledMenu = styled.ul<GridListProps>`
   max-height: 170px !important;
   padding-left: 5px !important;
   padding-right: 5px !important;
-  &::-webkit-scrollbar {
-    width: 8px;
-    background-color: #eeeeee;
-  }
-  &::-webkit-scrollbar-thumb {
-    border-radius: 10px;
-    -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
-    background-color: #939090;
-  }
   & li {
     list-style: none;
   }
@@ -70,25 +76,34 @@ const StyledMenuItem = styled(MenuItem)`
   flex-direction: column;
   align-items: center;
   padding: 13px 5px;
+
   &:active,
-  &:hover,
   &.bp3-active {
-    background-color: #eeeeee !important;
+    background-color: var(--ads-v2-color-bg-muted) !important;
+    border-radius: var(--ads-v2-border-radius) !important;
   }
+
+  &:hover {
+    background-color: var(--ads-v2-color-bg-subtle) !important;
+    border-radius: var(--ads-v2-border-radius) !important;
+  }
+
   > span.bp3-icon {
     margin-right: 0;
-    color: #939090 !important;
+    color: var(--ads-v2-color-fg) !important;
   }
+
   > div {
     width: 100%;
     text-align: center;
-    color: #939090 !important;
+    color: var(--ads-v2-color-fg) !important;
   }
 `;
 
 export interface IconSelectControlProps extends ControlProps {
   propertyValue?: IconName;
   defaultIconName?: IconName;
+  hideNoneIcon?: boolean;
 }
 
 export interface IconSelectControlState {
@@ -97,11 +112,12 @@ export interface IconSelectControlState {
 }
 
 const NONE = "(none)";
+
 type IconType = IconName | typeof NONE;
 const ICON_NAMES = Object.keys(IconNames).map<IconType>(
   (name: string) => IconNames[name as keyof typeof IconNames],
 );
-ICON_NAMES.unshift(NONE);
+const icons = new Set(ICON_NAMES);
 
 const TypedSelect = Select.ofType<IconType>();
 
@@ -114,6 +130,7 @@ class IconSelectControl extends BaseControl<
   private initialItemIndex: number;
   private filteredItems: Array<IconType>;
   private searchInput: React.RefObject<HTMLInputElement>;
+  id: string = generateReactKey();
 
   constructor(props: IconSelectControlProps) {
     super(props);
@@ -122,6 +139,23 @@ class IconSelectControl extends BaseControl<
     this.searchInput = React.createRef();
     this.initialItemIndex = 0;
     this.filteredItems = [];
+
+    /**
+     * Multiple instances of the IconSelectControl class may be created,
+     * and each instance modifies the ICON_NAMES array and the icons set.
+     * Without the below logic, the NONE icon may be added or removed
+     * multiple times, leading to unexpected behaviour.
+     */
+    const noneIconExists = icons.has(NONE);
+
+    if (!props.hideNoneIcon && !noneIconExists) {
+      ICON_NAMES.unshift(NONE);
+      icons.add(NONE);
+    } else if (props.hideNoneIcon && noneIconExists) {
+      ICON_NAMES.shift();
+      icons.delete(NONE);
+    }
+
     this.state = {
       activeIcon: props.propertyValue ?? NONE,
       isOpen: false,
@@ -131,6 +165,8 @@ class IconSelectControl extends BaseControl<
   // debouncedSetState is used to fix the following bug:
   // https://github.com/appsmithorg/appsmith/pull/10460#issuecomment-1022895174
   private debouncedSetState = _.debounce(
+    // TODO: Fix this the next time the file is edited
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (obj: any, callback?: () => void) => {
       this.setState((prevState: IconSelectControlState) => {
         return {
@@ -168,7 +204,7 @@ class IconSelectControl extends BaseControl<
 
     return (
       <>
-        <IconSelectContainerStyles targetWidth={containerWidth} />
+        <IconSelectContainerStyles id={this.id} targetWidth={containerWidth} />
         <TypedSelect
           activeItem={activeIcon || defaultIconName || NONE}
           className="icon-select-container"
@@ -179,12 +215,13 @@ class IconSelectControl extends BaseControl<
           itemPredicate={this.filterIconName}
           itemRenderer={this.renderIconItem}
           items={ICON_NAMES}
-          onItemSelect={this.handleIconChange}
+          onItemSelect={this.handleItemSelect}
           onQueryChange={this.handleQueryChange}
           popoverProps={{
             enforceFocus: false,
             minimal: true,
             isOpen: this.state.isOpen,
+            popoverClassName: `icon-select-popover icon-select-popover-${this.id}`,
             onInteraction: (state) => {
               if (this.state.isOpen !== state)
                 this.debouncedSetState({ isOpen: state });
@@ -201,6 +238,7 @@ class IconSelectControl extends BaseControl<
             icon={iconName || defaultIconName}
             onClick={this.handleButtonClick}
             rightIcon="caret-down"
+            tabIndex={0}
             text={iconName || defaultIconName || NONE}
           />
         </TypedSelect>
@@ -233,14 +271,22 @@ class IconSelectControl extends BaseControl<
           break;
         case "ArrowDown":
         case "Down": {
+          emitInteractionAnalyticsEvent(this.iconSelectTargetRef.current, {
+            key: e.key,
+          });
+
           if (document.activeElement === this.searchInput.current) {
             (document.activeElement as HTMLElement).blur();
+
             if (this.initialItemIndex < 0) this.initialItemIndex = -4;
             else break;
           }
+
           const nextIndex = this.initialItemIndex + 4;
+
           if (nextIndex < this.filteredItems.length)
             this.setActiveIcon(nextIndex);
+
           e.preventDefault();
           break;
         }
@@ -253,11 +299,20 @@ class IconSelectControl extends BaseControl<
               (this.initialItemIndex >= 0 && this.initialItemIndex < 4)) &&
             this.searchInput.current
           ) {
+            emitInteractionAnalyticsEvent(this.iconSelectTargetRef.current, {
+              key: e.key,
+            });
             this.searchInput.current.focus();
             break;
           }
+
+          emitInteractionAnalyticsEvent(this.iconSelectTargetRef.current, {
+            key: e.key,
+          });
           const nextIndex = this.initialItemIndex - 4;
+
           if (nextIndex >= 0) this.setActiveIcon(nextIndex);
+
           e.preventDefault();
           break;
         }
@@ -266,9 +321,15 @@ class IconSelectControl extends BaseControl<
           if (document.activeElement === this.searchInput.current) {
             break;
           }
+
+          emitInteractionAnalyticsEvent(this.iconSelectTargetRef.current, {
+            key: e.key,
+          });
           const nextIndex = this.initialItemIndex + 1;
+
           if (nextIndex < this.filteredItems.length)
             this.setActiveIcon(nextIndex);
+
           e.preventDefault();
           break;
         }
@@ -277,8 +338,14 @@ class IconSelectControl extends BaseControl<
           if (document.activeElement === this.searchInput.current) {
             break;
           }
+
+          emitInteractionAnalyticsEvent(this.iconSelectTargetRef.current, {
+            key: e.key,
+          });
           const nextIndex = this.initialItemIndex - 1;
+
           if (nextIndex >= 0) this.setActiveIcon(nextIndex);
+
           e.preventDefault();
           break;
         }
@@ -289,13 +356,23 @@ class IconSelectControl extends BaseControl<
             this.filteredItems.length !== 2
           )
             break;
-          this.handleIconChange(this.filteredItems[this.initialItemIndex]);
+
+          emitInteractionAnalyticsEvent(this.iconSelectTargetRef.current, {
+            key: e.key,
+          });
+          this.handleIconChange(
+            this.filteredItems[this.initialItemIndex],
+            true,
+          );
           this.debouncedSetState({ isOpen: false });
           e.preventDefault();
           e.stopPropagation();
           break;
         }
         case "Escape": {
+          emitInteractionAnalyticsEvent(this.iconSelectTargetRef.current, {
+            key: e.key,
+          });
           this.setState({
             isOpen: false,
             activeIcon: this.props.propertyValue ?? NONE,
@@ -303,14 +380,20 @@ class IconSelectControl extends BaseControl<
           e.stopPropagation();
         }
       }
-    } else if (
-      this.iconSelectTargetRef.current === document.activeElement &&
-      (e.key === "ArrowUp" ||
-        e.key === "Up" ||
-        e.key === "ArrowDown" ||
-        e.key === "Down")
-    ) {
-      this.debouncedSetState({ isOpen: true }, this.handleButtonClick);
+    } else if (this.iconSelectTargetRef.current === document.activeElement) {
+      switch (e.key) {
+        case "ArrowUp":
+        case "Up":
+        case "ArrowDown":
+        case "Down":
+          this.debouncedSetState({ isOpen: true }, this.handleButtonClick);
+          break;
+        case "Tab":
+          emitInteractionAnalyticsEvent(this.iconSelectTargetRef.current, {
+            key: `${e.shiftKey ? "Shift+" : ""}${e.key}`,
+          });
+          break;
+      }
     }
   };
 
@@ -353,8 +436,9 @@ class IconSelectControl extends BaseControl<
     if (!modifiers.matchesPredicate) {
       return null;
     }
+
     return (
-      <TooltipComponent content={icon}>
+      <Tooltip content={icon} mouseEnterDelay={0}>
         <StyledMenuItem
           active={modifiers.active}
           icon={icon === NONE ? undefined : icon}
@@ -363,7 +447,7 @@ class IconSelectControl extends BaseControl<
           text={icon === NONE ? NONE : undefined}
           textClassName={icon === NONE ? "bp3-icon-(none)" : ""}
         />
-      </TooltipComponent>
+      </Tooltip>
     );
   };
 
@@ -374,19 +458,36 @@ class IconSelectControl extends BaseControl<
     if (iconName === NONE || query === "") {
       return true;
     }
+
     return iconName.toLowerCase().indexOf(query.toLowerCase()) >= 0;
   };
 
-  private handleIconChange = (icon: IconType) => {
+  private handleIconChange = (icon: IconType, isUpdatedViaKeyboard = false) => {
     this.setState({ activeIcon: icon });
     this.updateProperty(
       this.props.propertyName,
       icon === NONE ? undefined : icon,
+      isUpdatedViaKeyboard,
     );
+  };
+
+  private handleItemSelect = (icon: IconType) => {
+    this.handleIconChange(icon, false);
   };
 
   static getControlType() {
     return "ICON_SELECT";
+  }
+
+  static canDisplayValueInUI(
+    config: IconSelectControlProps,
+    // TODO: Fix this the next time the file is edited
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    value: any,
+  ): boolean {
+    if (icons.has(value)) return true;
+
+    return false;
   }
 }
 

@@ -7,18 +7,20 @@ import Field from "widgets/JSONFormWidget/component/Field";
 import FormContext from "../FormContext";
 import useEvents from "./useBlurAndFocusEvents";
 import useRegisterFieldValidity from "./useRegisterFieldValidity";
-import {
+import type {
   FieldComponentBaseProps,
   BaseFieldComponentProps,
   FieldEventProps,
   ComponentDefaultValuesFnProps,
 } from "../constants";
+import { ActionUpdateDependency } from "../constants";
 import { EventType } from "constants/AppsmithActionConstants/ActionConstants";
-import { dateFormatOptions } from "../widget/propertyConfig/properties/date";
+import { dateFormatOptions } from "WidgetProvider/constants";
 import { ISO_DATE_FORMAT } from "constants/WidgetValidation";
 import { TimePrecision } from "widgets/DatePickerWidget2/constants";
 import { Colors } from "constants/Colors";
 import { BASE_LABEL_TEXT_SIZE } from "../component/FieldLabel";
+import useUnmountFieldValidation from "./useUnmountFieldValidation";
 
 type DateComponentProps = FieldComponentBaseProps &
   FieldEventProps & {
@@ -78,6 +80,7 @@ const componentDefaultValues = ({
     if (sourceDataPath && !skipDefaultValueProcessing) {
       const { prefixTemplate, suffixTemplate } = bindingTemplate;
       const defaultValueString = `moment(${sourceDataPath}, "${dateFormat}").format("${ISO_DATE_FORMAT}")`;
+
       defaultValue = `${prefixTemplate}${defaultValueString}${suffixTemplate}`;
     }
   }
@@ -94,8 +97,9 @@ export const isValidType = (value: string) =>
     moment(value, format, true).isValid(),
   );
 
-const isValid = (schemaItem: DateFieldProps["schemaItem"], value?: string) =>
-  !schemaItem.isRequired || Boolean(value?.trim());
+const isValid = (schemaItem: DateFieldProps["schemaItem"], value?: unknown) =>
+  !schemaItem.isRequired ||
+  (typeof value === "string" && Boolean(value?.trim()));
 
 function DateField({
   fieldClassName,
@@ -130,6 +134,7 @@ function DateField({
     fieldName: name,
     fieldType,
   });
+  useUnmountFieldValidation({ fieldName: name });
 
   const onDateSelected = useCallback(
     (selectedValue: string) => {
@@ -146,6 +151,7 @@ function DateField({
           event: {
             type: EventType.ON_DATE_SELECTED,
           },
+          updateDependencyType: ActionUpdateDependency.FORM_DATA,
         });
       }
     },
@@ -200,6 +206,7 @@ function DateField({
         inputRef={inputRef}
         isDisabled={schemaItem.isDisabled}
         isLoading={false}
+        isRequired={schemaItem.isRequired}
         labelText=""
         maxDate={schemaItem.maxDate}
         minDate={schemaItem.minDate}
@@ -207,7 +214,7 @@ function DateField({
         selectedDate={valueInISOFormat}
         shortcuts={schemaItem.shortcuts}
         timePrecision={schemaItem.timePrecision}
-        widgetId={name}
+        widgetId={fieldClassName}
       />
     );
   }, [
@@ -223,7 +230,7 @@ function DateField({
     schemaItem.shortcuts,
     schemaItem.timePrecision,
     inputRef,
-    name,
+    fieldClassName,
   ]);
 
   return (

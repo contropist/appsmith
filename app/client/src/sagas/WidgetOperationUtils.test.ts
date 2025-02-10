@@ -1,12 +1,16 @@
-import { OccupiedSpace } from "constants/CanvasEditorConstants";
+import type { OccupiedSpace } from "constants/CanvasEditorConstants";
+import { klona } from "klona";
 import { get } from "lodash";
-import { WidgetProps } from "widgets/BaseWidget";
-import { FlattenedWidgetProps } from "widgets/constants";
+import type { CanvasWidgetsReduxState } from "reducers/entityReducers/canvasWidgetsReducer";
+import type { WidgetProps } from "widgets/BaseWidget";
+import type { FlattenedWidgetProps } from "WidgetProvider/constants";
+import type { CopiedWidgetGroup } from "./WidgetOperationUtils";
 import {
   handleIfParentIsListWidgetWhilePasting,
   handleSpecificCasesWhilePasting,
   doesTriggerPathsContainPropertyPath,
-  checkIfPastingIntoListWidget,
+  getSelectedWidgetIfPastingIntoListWidget,
+  checkForListWidgetInCopiedWidgets,
   updateListWidgetPropertiesOnChildDelete,
   purgeOrphanedDynamicPaths,
   getBoundariesFromSelectedWidgets,
@@ -14,10 +18,11 @@ import {
   changeIdsOfPastePositions,
   getVerticallyAdjustedPositions,
   getNewPositionsForCopiedWidgets,
-  CopiedWidgetGroup,
   getPastePositionMapFromMousePointer,
   getReflowedPositions,
   getWidgetsFromIds,
+  getValueFromTree,
+  resizePublishedMainCanvasToLowestWidget,
 } from "./WidgetOperationUtils";
 
 describe("WidgetOperationSaga", () => {
@@ -103,7 +108,7 @@ describe("WidgetOperationSaga", () => {
     );
 
     expect(result.list1.template["Text1"].text).toStrictEqual(
-      "{{List1.listData.map((currentItem) => currentItem.text)}}",
+      "{{List1.listData.map((currentItem) => (currentItem.text))}}",
     );
     expect(get(result, "list1.dynamicBindingPathList.0.key")).toStrictEqual(
       "template.Text1.text",
@@ -111,12 +116,30 @@ describe("WidgetOperationSaga", () => {
   });
 
   it("should returns widgets after executing handleSpecificCasesWhilePasting", async () => {
-    const result = handleSpecificCasesWhilePasting(
-      {
-        widgetId: "text2",
-        type: "TEXT_WIDGET",
-        widgetName: "Text2",
-        parentId: "list2",
+    const widget: FlattenedWidgetProps = {
+      widgetId: "text2",
+      type: "TEXT_WIDGET",
+      widgetName: "Text2",
+      parentId: "list2",
+      renderMode: "CANVAS",
+      parentColumnSpace: 2,
+      parentRowSpace: 3,
+      leftColumn: 2,
+      rightColumn: 3,
+      topRow: 1,
+      bottomRow: 3,
+      isLoading: false,
+      listData: [],
+      text: "{{currentItem.text}}",
+      version: 16,
+      disablePropertyPane: false,
+    };
+    const widgets: { [widgetId: string]: FlattenedWidgetProps } = {
+      list1: {
+        widgetId: "list1",
+        type: "LIST_WIDGET",
+        widgetName: "List1",
+        parentId: "0",
         renderMode: "CANVAS",
         parentColumnSpace: 2,
         parentRowSpace: 3,
@@ -126,67 +149,51 @@ describe("WidgetOperationSaga", () => {
         bottomRow: 3,
         isLoading: false,
         listData: [],
-        text: "{{currentItem.text}}",
         version: 16,
         disablePropertyPane: false,
+        template: {},
       },
-      {
-        list1: {
-          widgetId: "list1",
-          type: "LIST_WIDGET",
-          widgetName: "List1",
-          parentId: "0",
-          renderMode: "CANVAS",
-          parentColumnSpace: 2,
-          parentRowSpace: 3,
-          leftColumn: 2,
-          rightColumn: 3,
-          topRow: 1,
-          bottomRow: 3,
-          isLoading: false,
-          listData: [],
-          version: 16,
-          disablePropertyPane: false,
-          template: {},
-        },
-        0: {
-          image: "",
-          defaultImage: "",
-          widgetId: "0",
-          type: "CANVAS_WIDGET",
-          widgetName: "MainContainer",
-          renderMode: "CANVAS",
-          parentColumnSpace: 2,
-          parentRowSpace: 3,
-          leftColumn: 2,
-          rightColumn: 3,
-          topRow: 1,
-          bottomRow: 3,
-          isLoading: false,
-          listData: [],
-          version: 16,
-          disablePropertyPane: false,
-          template: {},
-        },
-        list2: {
-          widgetId: "list2",
-          type: "LIST_WIDGET",
-          widgetName: "List2",
-          parentId: "0",
-          renderMode: "CANVAS",
-          parentColumnSpace: 2,
-          parentRowSpace: 3,
-          leftColumn: 2,
-          rightColumn: 3,
-          topRow: 1,
-          bottomRow: 3,
-          isLoading: false,
-          listData: [],
-          version: 16,
-          disablePropertyPane: false,
-          template: {},
-        },
+      0: {
+        image: "",
+        defaultImage: "",
+        widgetId: "0",
+        type: "CANVAS_WIDGET",
+        widgetName: "MainContainer",
+        renderMode: "CANVAS",
+        parentColumnSpace: 2,
+        parentRowSpace: 3,
+        leftColumn: 2,
+        rightColumn: 3,
+        topRow: 1,
+        bottomRow: 3,
+        isLoading: false,
+        listData: [],
+        version: 16,
+        disablePropertyPane: false,
+        template: {},
       },
+      list2: {
+        widgetId: "list2",
+        type: "LIST_WIDGET",
+        widgetName: "List2",
+        parentId: "0",
+        renderMode: "CANVAS",
+        parentColumnSpace: 2,
+        parentRowSpace: 3,
+        leftColumn: 2,
+        rightColumn: 3,
+        topRow: 1,
+        bottomRow: 3,
+        isLoading: false,
+        listData: [],
+        version: 16,
+        disablePropertyPane: false,
+        template: {},
+      },
+    };
+    const result = handleSpecificCasesWhilePasting(
+      widget,
+      widgets,
       {
         List1: "List2",
       },
@@ -212,11 +219,58 @@ describe("WidgetOperationSaga", () => {
       ],
     );
 
-    expect(result.list2.template["Text2"].text).toStrictEqual(
-      "{{List2.listData.map((currentItem) => currentItem.text)}}",
+    expect(result).toStrictEqual(widgets);
+  });
+
+  it("handleSpecificCasesWhilePasting should rename dynamicTriggerPathList template keys for a copied list widget", async () => {
+    const result = handleSpecificCasesWhilePasting(
+      {
+        widgetId: "list2",
+        type: "LIST_WIDGET",
+        widgetName: "List2",
+        parentId: "0",
+        renderMode: "CANVAS",
+        parentColumnSpace: 2,
+        parentRowSpace: 3,
+        leftColumn: 2,
+        rightColumn: 3,
+        topRow: 1,
+        bottomRow: 3,
+        isLoading: false,
+        listData: [],
+        version: 16,
+        disablePropertyPane: false,
+        template: {
+          Image1: {
+            widgetId: "image1",
+            type: "Image_WIDGET",
+            widgetName: "Image1",
+            parentId: "list2",
+            renderMode: "CANVAS",
+            parentColumnSpace: 2,
+            parentRowSpace: 3,
+            leftColumn: 2,
+            rightColumn: 3,
+            topRow: 1,
+            bottomRow: 3,
+            isLoading: false,
+            listData: [],
+            version: 16,
+            disablePropertyPane: false,
+            dynamicTriggerPathList: [{ key: "onClick" }],
+          },
+        },
+        dynamicTriggerPathList: [{ key: "template.Image1.onClick" }],
+      },
+      {},
+      {
+        Image1: "Image1Copy",
+      },
+      [],
     );
-    expect(get(result, "list2.dynamicBindingPathList.0.key")).toStrictEqual(
-      "template.Text2.text",
+
+    expect(get(result, "list2.dynamicTriggerPathList.0.key")).toStrictEqual(
+      "template.Image1Copy.onClick",
     );
   });
 
@@ -392,6 +446,7 @@ describe("WidgetOperationSaga", () => {
         },
       ],
     );
+
     expect(result["suhkuyfpk3"].onClick).toStrictEqual(
       "{{closeModal('Modal1Copy')}}",
     );
@@ -400,8 +455,8 @@ describe("WidgetOperationSaga", () => {
     );
   });
 
-  it("should returns widgets after executing checkIfPastingIntoListWidget", async () => {
-    const result = checkIfPastingIntoListWidget(
+  it("should returns widgets after executing getSelectedWidgetIfPastingIntoListWidget", async () => {
+    const result = getSelectedWidgetIfPastingIntoListWidget(
       {
         list2: {
           widgetId: "list2",
@@ -630,11 +685,14 @@ describe("WidgetOperationSaga", () => {
         },
       },
     };
-    const result = purgeOrphanedDynamicPaths((input as any) as WidgetProps);
+    // TODO: Fix this the next time the file is edited
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = purgeOrphanedDynamicPaths(input as any as WidgetProps);
+
     expect(result).toStrictEqual(expected);
   });
   it("should return boundaries of selected Widgets", () => {
-    const selectedWidgets = ([
+    const selectedWidgets = [
       {
         id: "1234",
         topRow: 10,
@@ -649,9 +707,13 @@ describe("WidgetOperationSaga", () => {
         rightColumn: 60,
         bottomRow: 70,
       },
-    ] as any) as WidgetProps[];
+      // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any as WidgetProps[];
+
     expect(getBoundariesFromSelectedWidgets(selectedWidgets)).toEqual({
       totalWidth: 40,
+      totalHeight: 60,
       maxThickness: 30,
       topMostRow: 10,
       leftMostColumn: 20,
@@ -659,11 +721,14 @@ describe("WidgetOperationSaga", () => {
   });
   describe("test getSnappedGrid", () => {
     it("should return snapGrids for a ContainerWidget", () => {
-      const canvasWidget = ({
+      const canvasWidget = {
         widgetId: "1234",
         type: "CONTAINER_WIDGET",
         noPad: true,
-      } as any) as WidgetProps;
+        // TODO: Fix this the next time the file is edited
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any as WidgetProps;
+
       expect(getSnappedGrid(canvasWidget, 250)).toEqual({
         padding: 4,
         snapGrid: {
@@ -673,11 +738,14 @@ describe("WidgetOperationSaga", () => {
       });
     });
     it("should return snapGrids for non ContainerWidget", () => {
-      const canvasWidget = ({
+      const canvasWidget = {
         widgetId: "1234",
         type: "LIST_WIDGET",
         noPad: false,
-      } as any) as WidgetProps;
+        // TODO: Fix this the next time the file is edited
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any as WidgetProps;
+
       expect(getSnappedGrid(canvasWidget, 250)).toEqual({
         padding: 10,
         snapGrid: {
@@ -704,6 +772,7 @@ describe("WidgetOperationSaga", () => {
         bottom: 22,
       },
     };
+
     expect(changeIdsOfPastePositions(newPastingPositionMap)).toEqual([
       {
         id: "1",
@@ -746,7 +815,7 @@ describe("WidgetOperationSaga", () => {
         bottom: 100,
       },
     ] as OccupiedSpace[];
-    const copiedWidgets = ([
+    const copiedWidgets = [
       {
         id: "1234",
         top: 10,
@@ -761,7 +830,10 @@ describe("WidgetOperationSaga", () => {
         right: 60,
         bottom: 70,
       },
-    ] as any) as OccupiedSpace[];
+      // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any as OccupiedSpace[];
+
     expect(
       getVerticallyAdjustedPositions(copiedWidgets, selectedWidgets, 30),
     ).toEqual({
@@ -782,7 +854,7 @@ describe("WidgetOperationSaga", () => {
     });
   });
   it("should test getNewPositionsForCopiedWidgets", () => {
-    const copiedGroups = ([
+    const copiedGroups = [
       {
         widgetId: "1234",
         list: [
@@ -805,7 +877,10 @@ describe("WidgetOperationSaga", () => {
           },
         ],
       },
-    ] as any) as CopiedWidgetGroup[];
+      // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any as CopiedWidgetGroup[];
+
     expect(
       getNewPositionsForCopiedWidgets(copiedGroups, 10, 40, 20, 10),
     ).toEqual([
@@ -826,7 +901,7 @@ describe("WidgetOperationSaga", () => {
     ]);
   });
   it("should test getPastePositionMapFromMousePointer", () => {
-    const copiedGroups = ([
+    const copiedGroups = [
       {
         widgetId: "1234",
         list: [
@@ -849,7 +924,10 @@ describe("WidgetOperationSaga", () => {
           },
         ],
       },
-    ] as any) as CopiedWidgetGroup[];
+      // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any as CopiedWidgetGroup[];
+
     expect(
       getPastePositionMapFromMousePointer(copiedGroups, 10, 40, 20, 10),
     ).toEqual({
@@ -961,6 +1039,7 @@ describe("WidgetOperationSaga", () => {
         bottomRow: 110,
       } as FlattenedWidgetProps,
     };
+
     expect(getWidgetsFromIds(["1235", "1234", "1237"], widgets)).toEqual([
       {
         widgetId: "1235",
@@ -977,5 +1056,813 @@ describe("WidgetOperationSaga", () => {
         bottomRow: 70,
       },
     ]);
+  });
+  it("should test checkForListWidgetInCopiedWidgets", () => {
+    //if copying list widget onto list widget
+    expect(
+      checkForListWidgetInCopiedWidgets([
+        {
+          widgetId: "list2",
+          parentId: "0",
+          list: [
+            {
+              widgetId: "list2",
+              type: "LIST_WIDGET",
+              widgetName: "List2",
+              parentId: "0",
+              renderMode: "CANVAS",
+              parentColumnSpace: 2,
+              parentRowSpace: 3,
+              leftColumn: 2,
+              rightColumn: 3,
+              topRow: 1,
+              bottomRow: 3,
+              isLoading: false,
+              listData: [],
+              version: 16,
+              disablePropertyPane: false,
+              template: {},
+            },
+          ],
+        },
+      ]),
+    ).toBe(true);
+
+    //if copying container widget onto list widget
+    expect(
+      checkForListWidgetInCopiedWidgets([
+        {
+          widgetId: "container",
+          parentId: "0",
+          list: [
+            {
+              widgetId: "container",
+              type: "CONTAINER_WIDGET",
+              widgetName: "container",
+              parentId: "0",
+              renderMode: "CANVAS",
+              parentColumnSpace: 2,
+              parentRowSpace: 3,
+              leftColumn: 2,
+              rightColumn: 3,
+              topRow: 1,
+              bottomRow: 3,
+              isLoading: false,
+              listData: [],
+              version: 16,
+              disablePropertyPane: false,
+              template: {},
+            },
+          ],
+        },
+      ]),
+    ).toBe(false);
+  });
+});
+
+describe("getValueFromTree - ", () => {
+  it("should test that value is correctly plucked from a valid path when object keys do not have dot", () => {
+    [
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          path1: {
+            path2: "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that has a non primitive value  as leaf node
+      {
+        inputObj: {
+          path1: {
+            path2: {
+              path3: "value",
+            },
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2",
+        output: {
+          path3: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          path1: [
+            {
+              path2: "value",
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.0.path2",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          path1: [
+            {
+              path2: {
+                path3: "value",
+              },
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.0.path2",
+        output: {
+          path3: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ].forEach((testObj: any) => {
+      expect(
+        getValueFromTree(testObj.inputObj, testObj.path, testObj.defaultValue),
+      ).toEqual(testObj.output);
+    });
+  });
+
+  it("should test that default value is returned for invalid path when object keys do not have dot", () => {
+    [
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          path1: {
+            path2: "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path4",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that has a non primitive value  as leaf node
+      {
+        inputObj: {
+          path1: {
+            path2: {
+              path3: "value",
+            },
+          },
+          someotherPath: "testValue",
+        },
+        path: "path4.path2",
+        output: {
+          path3: "value",
+        },
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          path1: [
+            {
+              path2: "value",
+              someotherPath: "testValue",
+            },
+          ],
+        },
+        path: "path1.1.path2",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          path1: [
+            {
+              path2: {
+                path3: "value",
+              },
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.1.path2",
+        output: {
+          path3: "value",
+        },
+        defaultValue: "will be returned",
+      },
+    ] // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .forEach((testObj: any) => {
+        expect(
+          getValueFromTree(
+            testObj.inputObj,
+            testObj.path,
+            testObj.defaultValue,
+          ),
+        ).toEqual(testObj.defaultValue);
+      });
+  });
+
+  it("should test that value is correctly plucked from a valid path when object keys have dot", () => {
+    [
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": "value",
+        },
+        path: "path1.path2.path3",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": {
+            path3: "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          path1: {
+            "path2.path3": "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          path1: {
+            path2: {
+              "path3.path4": "value",
+            },
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3.path4",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": {
+            "path3.path4": "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3.path4",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that has a non primitive value  as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": {
+            path4: "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3",
+        output: {
+          path4: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      //Path that has a non primitive value  as leaf node
+      {
+        inputObj: {
+          path1: {
+            "path2.path3": {
+              path4: "value",
+            },
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3",
+        output: {
+          path4: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      //Path that has a non primitive value  as leaf node
+      {
+        inputObj: {
+          path1: {
+            path2: {
+              "path3.path4": {
+                path5: "value",
+              },
+            },
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3.path4",
+        output: {
+          path5: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              path3: "value",
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.0.path3",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              path3: {
+                path4: "value",
+              },
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.0.path3.path4",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              "path3.path4": "value",
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.0.path3.path4",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              path3: [
+                {
+                  path4: "value",
+                },
+              ],
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.0.path3.0.path4",
+        output: "value",
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              path3: {
+                path4: "value",
+              },
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.0.path3",
+        output: {
+          path4: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": [
+            {
+              path4: "value",
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3.0",
+        output: {
+          path4: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": [
+            {
+              path4: [
+                {
+                  path5: "value",
+                },
+              ],
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3.0.path4.0",
+        output: {
+          path5: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": [
+            {
+              "path4.path5": [
+                {
+                  path6: "value",
+                },
+              ],
+            },
+          ],
+        },
+        path: "path1.path2.path3.0.path4.path5.0",
+        output: {
+          path6: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+      {
+        inputObj: {
+          "path1.path2.path3": [
+            {
+              ".path4.path5": [
+                {
+                  path6: "value",
+                },
+              ],
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3.0..path4.path5.0",
+        output: {
+          path6: "value",
+        },
+        defaultValue: "will not be returned",
+      },
+    ] // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .forEach((testObj: any) => {
+        expect(
+          getValueFromTree(
+            testObj.inputObj,
+            testObj.path,
+            testObj.defaultValue,
+          ),
+        ).toEqual(testObj.output);
+      });
+  });
+
+  it("should test that default value is returned for an invalid path when object keys have dot", () => {
+    [
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": "value",
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path4",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": {
+            path3: "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path3.path4",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          path1: {
+            "path2.path3": "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          path1: {
+            path2: {
+              "path3.path4": "value",
+            },
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.path3",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that has a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": {
+            "path3.path4": "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path3.path4",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that has a non primitive value  as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": {
+            path4: "value",
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2",
+        output: {
+          path4: "value",
+        },
+        defaultValue: "will be returned",
+      },
+      //Path that has a non primitive value  as leaf node
+      {
+        inputObj: {
+          path1: {
+            "path2.path3": {
+              path4: "value",
+            },
+          },
+          someotherPath: "testValue",
+        },
+        path: "path1.path2",
+        output: {
+          path4: "value",
+        },
+        defaultValue: "will be returned",
+      },
+      //Path that has a non primitive value  as leaf node
+      {
+        inputObj: {
+          path1: {
+            path2: {
+              "path3.path4": {
+                path5: "value",
+              },
+            },
+          },
+          someotherPath: "testValue",
+        },
+        path: "path2.path3.path4",
+        output: {
+          path5: "value",
+        },
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              path3: "value",
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.1.path3",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              path3: {
+                path4: "value",
+              },
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.1.path3.path4",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              "path3.path4": "value",
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.1.path3.path4",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              path3: [
+                {
+                  path4: "value",
+                },
+              ],
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.path2.2.path3.0.path4",
+        output: "value",
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2": [
+            {
+              path3: {
+                path4: "value",
+              },
+            },
+          ],
+          someotherPath: "testValue",
+        },
+        path: "path1.0.path3",
+        output: {
+          path4: "value",
+        },
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": [
+            {
+              path4: "value",
+            },
+          ],
+        },
+        path: "path1.path2.0",
+        output: {
+          path4: "value",
+        },
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": [
+            {
+              path4: [
+                {
+                  path5: "value",
+                },
+              ],
+            },
+          ],
+        },
+        path: "path1.path2.0.path4.0",
+        output: {
+          path5: "value",
+        },
+        defaultValue: "will be returned",
+      },
+      //Path that traverse through an array with a non primitive value as leaf node
+      {
+        inputObj: {
+          "path1.path2.path3": [
+            {
+              "path4.path5": [
+                {
+                  path6: "value",
+                },
+              ],
+            },
+          ],
+        },
+        path: "path1.path2.path3.0.path4.0",
+        output: {
+          path6: "value",
+        },
+        defaultValue: "will be returned",
+      },
+    ] // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .forEach((testObj: any) => {
+        expect(
+          getValueFromTree(
+            testObj.inputObj,
+            testObj.path,
+            testObj.defaultValue,
+          ),
+        ).toEqual(testObj.defaultValue);
+      });
+  });
+
+  it("should check that invalid path strucutre should return defaultValue", () => {
+    [
+      {
+        inputObj: {
+          path1: {
+            path2: {
+              path3: "value",
+            },
+          },
+        },
+        path: "path1.path2..path3",
+        output: {
+          path6: "value",
+        },
+        defaultValue: "will be returned",
+      },
+      {
+        inputObj: {
+          path1: {
+            path2: [
+              {
+                path3: "value",
+              },
+            ],
+          },
+        },
+        path: "path1.path2.0..path3",
+        output: {
+          path6: "value",
+        },
+        defaultValue: "will be returned",
+      },
+    ] // TODO: Fix this the next time the file is edited
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .forEach((testObj: any) => {
+        expect(
+          getValueFromTree(
+            testObj.inputObj,
+            testObj.path,
+            testObj.defaultValue,
+          ),
+        ).toEqual(testObj.defaultValue);
+      });
+  });
+
+  describe("test resizeCanvasToLowestWidget and resizePublishedMainCanvasToLowestWidget", () => {
+    const widgets = {
+      0: { bottomRow: 100, children: ["1", "2"], type: "CANVAS_WIDGET" },
+      1: {
+        bottomRow: 10,
+        children: ["3", "4"],
+        type: "CANVAS_WIDGET",
+        minHeight: 260,
+      },
+      2: { bottomRow: 35, children: [] },
+      3: { bottomRow: 15, children: [] },
+      4: { bottomRow: 20, children: [] },
+    } as unknown as CanvasWidgetsReduxState;
+
+    it("should trim canvas close to the lowest bottomRow of it's children widget", () => {
+      const currentWidgets = klona(widgets);
+
+      resizePublishedMainCanvasToLowestWidget(currentWidgets);
+      expect(currentWidgets["0"].bottomRow).toEqual(400);
+    });
   });
 });

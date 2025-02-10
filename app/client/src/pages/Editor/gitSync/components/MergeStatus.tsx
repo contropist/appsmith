@@ -1,16 +1,10 @@
 import React from "react";
-import styled from "constants/DefaultTheme";
+import styled from "styled-components";
 import StatusLoader from "./StatusLoader";
-import Text, { TextType } from "components/ads/Text";
-import { Colors } from "constants/Colors";
-import { Classes } from "components/ads";
+import { Icon, Text } from "@appsmith/ads";
 
 const Flex = styled.div`
   display: flex;
-
-  & ${Classes.TEXT} {
-    align-self: center;
-  }
 `;
 
 export const MERGE_STATUS_STATE = {
@@ -25,6 +19,12 @@ const Wrapper = styled.div`
   display: flex;
   flex-direction: row;
   margin-top: ${(props) => `${props.theme.spaces[3]}px`};
+  width: 45%;
+  align-items: flex-start;
+  gap: 5px;
+  .ads-v2-icon {
+    margin-top: 3px;
+  }
 `;
 
 function MergeStatus({
@@ -45,7 +45,7 @@ function MergeStatus({
       return (
         <Flex>
           <Wrapper>
-            <Text color={Colors.GREEN} type={TextType.P3} weight="600">
+            <Text color="var(--ads-v2-color-fg-success)" kind="body-m">
               {message}
             </Text>
           </Wrapper>
@@ -56,7 +56,12 @@ function MergeStatus({
       return (
         <Flex>
           <Wrapper>
-            <Text color={Colors.CRIMSON} type={TextType.P3} weight="600">
+            <Icon
+              color="var(--ads-v2-color-fg-error)"
+              name="alert-line"
+              size="md"
+            />
+            <Text color="var(--ads-v2-color-fg-error)" kind="body-m">
               {message}
             </Text>
           </Wrapper>
